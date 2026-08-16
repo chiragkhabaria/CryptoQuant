@@ -70,6 +70,26 @@ Stores tradeable pairs with Coinbase Product API fields.
 - `ix_crypto_trading_pairs_symbol` (UNIQUE)
 - `ix_crypto_trading_pairs_active`
 
+### crypto.tracked_pairs
+
+Controls which trading pairs to actively monitor for data collection.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Primary key (auto-increment) |
+| product_id | VARCHAR(50) | Trading pair identifier (e.g., 'BTC-USD') - UNIQUE |
+| symbol | VARCHAR(20) | Display symbol |
+| is_tracking_active | BOOLEAN | Enable/disable tracking (1=active, 0=inactive) |
+| created_at | DATETIME | Record creation timestamp |
+| modified_at | DATETIME | Last modification timestamp (auto-updated) |
+
+**Indexes:**
+- `ix_crypto_tracked_pairs_product_id` (UNIQUE)
+- `ix_crypto_tracked_pairs_symbol`
+- `ix_crypto_tracked_pairs_is_tracking_active`
+
+**Purpose**: Selective monitoring - only pairs with `is_tracking_active=1` are processed by historic/live data ingestion scripts.
+
 ### crypto.market_prices
 
 Stores historical OHLCV (candlestick) price data.
@@ -164,12 +184,31 @@ WHERE TABLE_SCHEMA = 'crypto' AND TABLE_NAME = 'assets';
 
 After schema is created, populate with initial data:
 
+**Phase I: Asset Data**
 ```bash
-# Seed database with initial assets (optional)
-python scripts/seed_database.py
+# Populate assets from Coinbase API
+# Execute all cells in: tests/integration/test_data_ingestion.ipynb
+```
 
-# Or use the ingestion notebook to populate from Coinbase API
-jupyter notebook tests/integration/test_data_ingestion.ipynb
+**Phase II: Trading Pairs (REQUIRED before historic data collection)**
+```bash
+# Populate trading pairs from Coinbase API
+# Execute all cells in: tests/integration/populate_trading_pairs.ipynb
+```
+
+This notebook will:
+- Fetch all 912 products from Coinbase API
+| 003 | Add product_id to assets table | 2026-08-08 |
+| 005 | Create tracked_pairs table | 2026-08-11 |
+- Create any missing assets (base/quote currencies)
+- Insert trading pairs with order constraints
+- Verify tracked pairs are present
+
+**Verification:**
+```sql
+SELECT COUNT(*) FROM crypto.assets;           -- Should be ~400+
+SELECT COUNT(*) FROM crypto.trading_pairs;    -- Should be ~912
+SELECT COUNT(*) FROM crypto.tracked_pairs;    -- Should be 4 initially
 ```
 
 ## Migration History
@@ -260,14 +299,53 @@ DATABASE_URL=mssql+pyodbc://server/database?driver=ODBC+Driver+18+for+SQL+Server
 DATABASE_URL=sqlite:///./cryptoquant_dev.db
 ```
 
+## Phase II: Historic Data Collection
+
+After initial database setup and trading pair population, load historical market data:
+
+### 1. Initial 3-Year Daily Load
+
+Load 3 years of daily OHLCV data for tracked pairs:
+
+```powershell
+python scripts/collect_historic_data.py --granularity daily --days 1095
+```
+
+**Expected results:**
+- Processes 4 tracked pairs (BTC-USD, ETH-USD, XRP-USD, SOL-USD)
+- ~1095 daily candles per pair
+- Total: ~4,380 records
+
+### 2. Transition to Hourly Data (Future)
+
+After initial analysis, load hourly data for refined strategies:
+
+```powershell
+# Load last 90 days of hourly data
+python scripts/collect_historic_data.py --granularity hourly --days 90
+```
+
+### 3. Daily Updates
+
+Keep data current with automated daily updates:
+
+```powershell
+# Fetch last 2 days (catches any gaps)
+python scripts/collect_historic_data.py --granularity daily --days 2
+```
+
+**For detailed historic ingestion instructions, see:** [HISTORIC_INGESTION.md](HISTORIC_INGESTION.md)
+
 ## Next Steps
 
-After database setup:
+After database setup and historic data load:
 
-1. ✅ Run ingestion notebook to populate assets and trading pairs from Coinbase
-2. ✅ Set up scheduled data collection for market prices
-3. ✅ Configure monitoring and alerting
-4. ✅ Implement backup strategy
+1. ✅ Run ingestion notebook to populate assets from Coinbase
+2. ✅ Run trading pairs notebook to populate all 912 pairs
+3. ✅ Run historic data collection for 3-year daily data
+4. ⏳ Set up scheduled daily updates for market prices
+5. ⏳ Configure monitoring and alerting
+6. ⏳ Implement backup strategy
 
 ## Support
 

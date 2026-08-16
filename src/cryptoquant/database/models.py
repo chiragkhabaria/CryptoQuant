@@ -95,6 +95,27 @@ class TradingPair(Base):
         return f"<TradingPair(id={self.id}, symbol='{self.symbol}')>"
 
 
+class TrackedPair(Base):
+    """
+    Tracked trading pairs table.
+
+    Controls which trading pairs to actively monitor and collect historical/live data for.
+    """
+
+    __tablename__ = "tracked_pairs"
+    __table_args__ = {"schema": "crypto"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(String(50), unique=True, nullable=False, index=True)
+    symbol = Column(String(20), nullable=False, index=True)
+    is_tracking_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    modified_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self) -> str:
+        return f"<TrackedPair(id={self.id}, product_id='{self.product_id}', active={self.is_tracking_active})>"
+
+
 class MarketPrice(Base):
     """
     Market price time-series data (OHLCV).
