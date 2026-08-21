@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     smtp_password: Optional[str] = None
     approval_email: Optional[str] = None
 
+    # Scheduler Configuration
+    scheduler_enabled: bool = True
+    scheduler_jobs_config: str = "config/jobs.yaml"
+    ingestion_interval_minutes: int = 60  # Deprecated: use jobs.yaml
+    ingestion_granularity: str = "hourly"
+    ingestion_lookback_days: int = 1
+
     # Trading Configuration (for future execution)
     max_position_size: float = 1000.0
     risk_percentage: float = 0.02

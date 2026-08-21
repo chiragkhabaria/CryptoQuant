@@ -1,0 +1,48 @@
+# CryptoQuant Scheduler Job Configuration
+# 
+# This file defines all scheduled jobs. The scheduler reads this on startup
+# and creates jobs dynamically. No code changes needed to add/modify jobs.
+#
+# Job types:
+#   - cron: Schedule at specific times (daily, hourly, etc.)
+#   - interval: Run every N minutes/hours
+#
+# Common cron examples:
+#   "0 2 * * *"     - Daily at 2:00 AM
+#   "0 */4 * * *"   - Every 4 hours
+#   "0 0 * * 0"     - Every Sunday at midnight
+#   "30 1 * * 1-5"  - Weekdays at 1:30 AM
+
+jobs:
+  # Historic OHLCV data ingestion
+  - id: historic_ingestion
+    name: "Historic OHLCV Data Ingestion"
+    enabled: true
+    run_on_startup: false  # Set to true to run immediately when scheduler starts (for testing)
+    
+    # Job type: 'cron' or 'interval'
+    type: cron
+    
+    # Cron schedule (only used when type=cron)
+    # Default: Daily at 2:00 AM UTC
+    cron: "0 2 * * *"
+    
+    # Interval in minutes (only used when type=interval)
+    # interval_minutes: 60
+    
+    # Function to call (must exist in cryptoquant.scheduling.jobs)
+    function: historic_ingestion_job
+    
+    # Job-specific parameters (passed to job function if needed)
+    # parameters:
+    #   granularity: hourly
+    #   lookback_days: 1
+
+  # Example: Additional job template (disabled)
+  # - id: indicator_calculation
+  #   name: "Calculate Technical Indicators"
+  #   enabled: false
+  #   run_on_startup: false
+  #   type: interval
+  #   interval_minutes: 30
+  #   function: calculate_indicators_job

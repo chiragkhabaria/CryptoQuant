@@ -29,6 +29,7 @@ sys.path.insert(0, str(src_path))
 from cryptoquant.collectors.coinbase_client import CoinbaseClient, CandleGranularity
 from cryptoquant.database.session import get_session
 from cryptoquant.database.models import TradingPair, TrackedPair, MarketPrice
+from cryptoquant.ingestion.historic import GRANULARITY_MAP, get_tracked_pairs, fetch_and_store_candles
 
 
 # Setup logging
@@ -57,130 +58,8 @@ def setup_logging(log_file: Optional[str] = None):
     return logging.getLogger(__name__)
 
 
-# Granularity mapping
-GRANULARITY_MAP = {
-    "minute": CandleGranularity.ONE_MINUTE,
-    "five_minute": CandleGranularity.FIVE_MINUTE,
-    "fifteen_minute": CandleGranularity.FIFTEEN_MINUTE,
-    "thirty_minute": CandleGranularity.THIRTY_MINUTE,
-    "hourly": CandleGranularity.ONE_HOUR,
-    "two_hour": CandleGranularity.TWO_HOUR,
-    "six_hour": CandleGranularity.SIX_HOUR,
-    "daily": CandleGranularity.ONE_DAY,
-}
-
-
-def get_tracked_pairs(session, product_id: Optional[str] = None) -> list[tuple[str, int]]:
-    """
-    Get list of tracked trading pairs to process.
-    
-    Returns:
-        List of (product_id, trading_pair_id) tuples
-    """
-    if product_id:
-        # Fetch specific pair
-        pair = (
-            session.query(TradingPair.symbol, TradingPair.id)
-            .filter(TradingPair.symbol == product_id)
-            .first()
-        )
-        if not pair:
-            raise ValueError(f"Trading pair '{product_id}' not found in database")
-        return [pair]
-    
-    # Fetch all active tracked pairs
-    tracked = (
-        session.query(TradingPair.symbol, TradingPair.id)
-        .join(TrackedPair, TradingPair.symbol == TrackedPair.product_id)
-        .filter(TrackedPair.is_tracking_active == True)
-        .all()
-    )
-    
-    if not tracked:
-        raise ValueError("No active tracked pairs found. Enable tracking in crypto.tracked_pairs table.")
-    
-    return tracked
-
-
-def fetch_and_store_candles(
-    client: CoinbaseClient,
-    session,
-    product_id: str,
-    trading_pair_id: int,
-    granularity: CandleGranularity,
-    start_date: datetime,
-    end_date: datetime,
-    logger: logging.Logger
-) -> dict:
-    """
-    Fetch candles from API and store in database.
-    
-    Returns:
-        Dict with stats: {inserted, skipped, errors}
-    """
-    stats = {"inserted": 0, "skipped": 0, "errors": 0}
-    
-    try:
-        # Fetch candles from Coinbase API
-        logger.info(f"Fetching {granularity.value} candles for {product_id} from {start_date.date()} to {end_date.date()}")
-        
-        candles = client.get_candles(
-            product_id=product_id,
-            granularity=granularity,
-            start=start_date,
-            end=end_date
-        )
-        
-        if not candles:
-            logger.warning(f"No candles returned for {product_id}")
-            return stats
-        
-        logger.info(f"Fetched {len(candles)} candles for {product_id}")
-        
-        # Insert candles in batches
-        batch_size = 100
-        for i in range(0, len(candles), batch_size):
-            batch = candles[i:i+batch_size]
-            
-            for candle in batch:
-                try:
-                    market_price = MarketPrice(
-                        trading_pair_id=trading_pair_id,
-                        timestamp=candle.start,
-                        open=Decimal(str(candle.open)),
-                        high=Decimal(str(candle.high)),
-                        low=Decimal(str(candle.low)),
-                        close=Decimal(str(candle.close)),
-                        volume=Decimal(str(candle.volume)),
-                        data_source="coinbase"
-                    )
-                    session.add(market_price)
-                    stats["inserted"] += 1
-                    
-                except IntegrityError:
-                    # Duplicate timestamp - skip
-                    session.rollback()
-                    stats["skipped"] += 1
-                except Exception as e:
-                    logger.error(f"Error inserting candle for {product_id} at {candle.start}: {e}")
-                    session.rollback()
-                    stats["errors"] += 1
-            
-            # Commit batch
-            try:
-                session.commit()
-            except Exception as e:
-                logger.error(f"Error committing batch for {product_id}: {e}")
-                session.rollback()
-                stats["errors"] += len(batch) - stats["skipped"]
-        
-        logger.info(f"Completed {product_id}: {stats['inserted']} inserted, {stats['skipped']} skipped, {stats['errors']} errors")
-        
-    except Exception as e:
-        logger.error(f"Error fetching candles for {product_id}: {e}")
-        stats["errors"] += 1
-    
-    return stats
+# GRANULARITY_MAP, get_tracked_pairs, and fetch_and_store_candles are imported
+# from cryptoquant.ingestion.historic above.
 
 
 @click.command()
@@ -310,7 +189,7 @@ def main(
                 granularity=candle_granularity,
                 start_date=start_date,
                 end_date=end_date,
-                logger=logger
+                log=logger,
             )
             
             # Update totals
