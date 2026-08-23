@@ -4,12 +4,17 @@ Historic OHLCV data ingestion pipeline.
 Contains the reusable building blocks for fetching candle data from Coinbase
 and persisting it to the database.  Both the CLI script and the scheduler call
 ``run_ingestion()`` as the primary entry point.
+
+Supports two modes:
+- **Historical mode**: Fetch N days back from now (e.g., 3 years of data)
+- **Incremental mode**: Fetch from last ingestion timestamp to now (for daily updates)
 """
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from cryptoquant.collectors.coinbase_client import CandleGranularity, CoinbaseClient
@@ -63,6 +68,25 @@ def get_tracked_pairs(session, product_id: Optional[str] = None) -> list[tuple[s
             "No active tracked pairs found. Enable tracking in crypto.tracked_pairs table."
         )
     return tracked
+
+
+def get_last_ingestion_time(session, trading_pair_id: int) -> Optional[datetime]:
+    """
+    Get the most recent candle timestamp for a trading pair.
+    
+    Args:
+        session: SQLAlchemy session.
+        trading_pair_id: Primary key of the trading pair.
+    
+    Returns:
+        Most recent timestamp, or None if no data exists.
+    """
+    result = (
+        session.query(func.max(MarketPrice.timestamp))
+        .filter(MarketPrice.trading_pair_id == trading_pair_id)
+        .scalar()
+    )
+    return result
 
 
 def fetch_and_store_candles(
@@ -174,18 +198,26 @@ def run_ingestion(
     granularity: str = "hourly",
     days: int = 1,
     product_id: Optional[str] = None,
+    incremental: bool = False,
 ) -> dict:
     """
-    Fetch and store recent OHLCV data for all active tracked pairs.
+    Fetch and store OHLCV data for all active tracked pairs.
 
     This is the primary callable entry point for both the scheduler and any
     other programmatic consumer.  The CLI script (``collect_historic_data.py``)
     provides the interactive/progress-bar wrapper on top of this function.
 
     Args:
-        granularity: Key from ``GRANULARITY_MAP`` (e.g. ``"daily"``).
-        days: Number of days back from *now* to fetch.
+        granularity: Key from ``GRANULARITY_MAP`` (e.g. ``"hourly"``).
+        days: Number of days back from *now* to fetch (ignored if incremental=True).
         product_id: Restrict to a single pair; ``None`` fetches all tracked pairs.
+        incremental: If True, fetch from last ingestion timestamp to now.
+
+    Modes:
+        - **Historical** (incremental=False): Fetch `days` back from now.
+          Use for initial 3-year data load.
+        - **Incremental** (incremental=True): Fetch from last timestamp to now.
+          Use for daily updates. Falls back to 7 days if no previous data exists.
 
     Returns:
         Aggregated ``{"inserted": int, "skipped": int, "errors": int}`` across
@@ -218,18 +250,47 @@ def run_ingestion(
 
     try:
         tracked_pairs = get_tracked_pairs(session, product_id)
-        _log.info("Processing %d pair(s)", len(tracked_pairs))
+        mode = "incremental" if incremental else "historical"
+        _log.info("Processing %d pair(s) in %s mode", len(tracked_pairs), mode)
 
         total: dict[str, int] = {"inserted": 0, "skipped": 0, "errors": 0}
 
         for pair_symbol, pair_id in tracked_pairs:
+            # Determine start_date based on mode
+            if incremental:
+                last_time = get_last_ingestion_time(session, pair_id)
+                if last_time:
+                    # Start from last timestamp + 1 hour to avoid duplicate
+                    pair_start = last_time + timedelta(hours=1)
+                    _log.info(
+                        "%s: Incremental from %s",
+                        pair_symbol,
+                        pair_start.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    )
+                else:
+                    # No previous data - fetch 7 days as initial seed
+                    pair_start = end_date - timedelta(days=7)
+                    _log.info(
+                        "%s: No previous data, fetching %d days",
+                        pair_symbol,
+                        7,
+                    )
+            else:
+                # Historical mode: use days parameter
+                pair_start = start_date
+                _log.info(
+                    "%s: Historical load, fetching %d days",
+                    pair_symbol,
+                    days,
+                )
+
             stats = fetch_and_store_candles(
                 client=client,
                 session=session,
                 product_id=pair_symbol,
                 trading_pair_id=pair_id,
                 granularity=candle_granularity,
-                start_date=start_date,
+                start_date=pair_start,
                 end_date=end_date,
                 log=_log,
             )

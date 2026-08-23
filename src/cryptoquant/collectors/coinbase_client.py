@@ -243,6 +243,8 @@ class CoinbaseClient:
         """
         Get historical candle data (OHLCV) for a product.
 
+        Automatically chunks large requests to stay within Coinbase API limits (~300 candles per request).
+
         Args:
             product_id: Trading pair symbol (e.g., "BTC-USD")
             granularity: Candle time interval
@@ -263,14 +265,105 @@ class CoinbaseClient:
             >>> print(f"Latest close: {candles[-1].close}")
         """
         logger.info(f"Fetching candles for {product_id} ({granularity.value}, {days} days)")
-        endpoint = f"/api/v3/brokerage/products/{product_id}/candles"
-
+        
         # Calculate time range
         if not end:
             end = datetime.now(timezone.utc)
         if not start:
             start = end - timedelta(days=days)
 
+        # Determine max candles per request based on granularity
+        # Coinbase API limit is ~300 candles per request
+        granularity_limits = {
+            CandleGranularity.ONE_MINUTE: 200,      # ~3.3 hours
+            CandleGranularity.FIVE_MINUTE: 250,     # ~20.8 hours
+            CandleGranularity.FIFTEEN_MINUTE: 280,  # ~2.9 days
+            CandleGranularity.THIRTY_MINUTE: 280,   # ~5.8 days
+            CandleGranularity.ONE_HOUR: 280,        # ~11.7 days
+            CandleGranularity.TWO_HOUR: 280,        # ~23.3 days
+            CandleGranularity.SIX_HOUR: 300,        # ~75 days
+            CandleGranularity.ONE_DAY: 300,         # ~300 days
+        }
+        
+        max_candles = granularity_limits.get(granularity, 300)
+        
+        # Calculate chunk size in seconds based on granularity
+        granularity_seconds = {
+            CandleGranularity.ONE_MINUTE: 60,
+            CandleGranularity.FIVE_MINUTE: 300,
+            CandleGranularity.FIFTEEN_MINUTE: 900,
+            CandleGranularity.THIRTY_MINUTE: 1800,
+            CandleGranularity.ONE_HOUR: 3600,
+            CandleGranularity.TWO_HOUR: 7200,
+            CandleGranularity.SIX_HOUR: 21600,
+            CandleGranularity.ONE_DAY: 86400,
+        }
+        
+        interval_seconds = granularity_seconds.get(granularity, 86400)
+        chunk_duration_seconds = max_candles * interval_seconds
+        
+        # Check if we need to chunk the request
+        total_duration = int((end - start).total_seconds())
+        needs_chunking = total_duration > chunk_duration_seconds
+        
+        all_candles = []
+        
+        if needs_chunking:
+            logger.info(f"Request spans {total_duration}s, chunking into {chunk_duration_seconds}s segments")
+            current_start = start
+            
+            while current_start < end:
+                current_end = min(current_start + timedelta(seconds=chunk_duration_seconds), end)
+                
+                logger.info(f"Fetching chunk: {current_start.date()} to {current_end.date()}")
+                chunk_candles = self._fetch_candles_chunk(
+                    product_id, granularity, current_start, current_end
+                )
+                all_candles.extend(chunk_candles)
+                
+                current_start = current_end
+                
+                # Small delay between chunks to avoid rate limiting
+                if current_start < end:
+                    time.sleep(0.5)
+        else:
+            all_candles = self._fetch_candles_chunk(product_id, granularity, start, end)
+        
+        # Sort by timestamp (oldest first) and remove duplicates
+        all_candles.sort(key=lambda c: c.start)
+        
+        # Remove duplicates (can happen at chunk boundaries)
+        unique_candles = []
+        seen_timestamps = set()
+        for candle in all_candles:
+            if candle.start not in seen_timestamps:
+                unique_candles.append(candle)
+                seen_timestamps.add(candle.start)
+        
+        logger.info(f"Retrieved {len(unique_candles)} candles for {product_id}")
+        return unique_candles
+    
+    def _fetch_candles_chunk(
+        self,
+        product_id: str,
+        granularity: CandleGranularity,
+        start: datetime,
+        end: datetime,
+    ) -> list[Candle]:
+        """
+        Fetch a single chunk of candles from the API.
+        
+        Args:
+            product_id: Trading pair symbol
+            granularity: Candle time interval
+            start: Start timestamp
+            end: End timestamp
+            
+        Returns:
+            List of Candle objects
+        """
+        endpoint = f"/api/v3/brokerage/products/{product_id}/candles"
+        
         params = {
             "granularity": granularity.value,
             "start": int(start.timestamp()),
@@ -293,12 +386,8 @@ class CoinbaseClient:
                 )
                 candles.append(candle)
 
-            # Sort by timestamp (oldest first)
-            candles.sort(key=lambda c: c.start)
-
-            logger.info(f"Retrieved {len(candles)} candles for {product_id}")
             return candles
 
         except Exception as e:
-            logger.error(f"Failed to fetch candles for {product_id}: {e}")
+            logger.error(f"Failed to fetch candles chunk for {product_id}: {e}")
             raise

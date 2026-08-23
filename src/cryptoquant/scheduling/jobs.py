@@ -39,6 +39,7 @@ def historic_ingestion_job() -> None:
             stats = run_ingestion(
                 granularity=settings.ingestion_granularity,
                 days=settings.ingestion_lookback_days,
+                incremental=True,  # Enable incremental mode for scheduled runs
             )
             logger.info(
                 "historic_ingestion_job: completed — inserted=%d, skipped=%d, errors=%d",
