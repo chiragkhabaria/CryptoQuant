@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "cryptoquant", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.14"
+python = ">=3.12,<4.0"
 fastapi = "^0.115.0"
 uvicorn = {extras = ["standard"], version = "^0.32.0"}
 sqlalchemy = "^2.0.36"
@@ -26,6 +26,11 @@ pyodbc = "^5.2.0"
 cryptography = "^44.0.0"
 httpx = "^0.28.0"
 websockets = "^14.1"
+click = "^8.1.0"
+tqdm = "^4.67.0"
+pyjwt = "^2.9.0"
+apscheduler = "^3.10"
+pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
@@ -45,7 +50,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 100
-target-version = ['py314']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -63,7 +68,7 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -87,7 +92,7 @@ ignore = [
 "__init__.py" = ["F401"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
