@@ -15,6 +15,61 @@ from cryptoquant.ingestion.historic import run_ingestion
 logger = logging.getLogger(__name__)
 
 
+def incremental_ingestion_job() -> None:
+    """
+    Periodic job: fetch new OHLCV data from last watermark to now.
+
+    Uses watermark logic (last ingested timestamp) to only fetch new data.
+    Runs every 4 hours by default. Falls back to 7 days if no previous data exists.
+
+    Implements retry logic (3 attempts with 60-second wait) to handle
+    transient database connection issues.
+
+    Exceptions are caught and logged; the scheduler process keeps running.
+    """
+    logger.info("incremental_ingestion_job: started")
+
+    max_retries = 3
+    retry_delay_seconds = 60
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            stats = run_ingestion(
+                granularity="hourly",  # Hourly granularity for frequent updates
+                days=1,  # Ignored in incremental mode
+                incremental=True,  # Fetch from last timestamp to now
+            )
+            logger.info(
+                "incremental_ingestion_job: completed — inserted=%d, skipped=%d, errors=%d",
+                stats["inserted"],
+                stats["skipped"],
+                stats["errors"],
+            )
+            if stats["errors"] > 0:
+                logger.warning(
+                    "incremental_ingestion_job: %d error(s) occurred during ingestion",
+                    stats["errors"],
+                )
+            # Success - exit retry loop
+            return
+
+        except Exception as exc:
+            if attempt < max_retries:
+                logger.warning(
+                    "incremental_ingestion_job: attempt %d/%d failed — %s — retrying in %d seconds...",
+                    attempt,
+                    max_retries,
+                    exc,
+                    retry_delay_seconds,
+                )
+                time.sleep(retry_delay_seconds)
+            else:
+                logger.exception(
+                    "incremental_ingestion_job: all %d attempts failed — giving up until next scheduled run",
+                    max_retries,
+                )
+
+
 def historic_ingestion_job() -> None:
     """
     Periodic job: fetch and store recent OHLCV data for all tracked pairs.
@@ -39,7 +94,7 @@ def historic_ingestion_job() -> None:
             stats = run_ingestion(
                 granularity=settings.ingestion_granularity,
                 days=settings.ingestion_lookback_days,
-                incremental=True,  # Enable incremental mode for scheduled runs
+                incremental=False,  # Historical mode - fetch N days back
             )
             logger.info(
                 "historic_ingestion_job: completed — inserted=%d, skipped=%d, errors=%d",
@@ -62,6 +117,7 @@ def historic_ingestion_job() -> None:
                     attempt,
                     max_retries,
                     exc,
+                    retry_delay_seconds,
                 )
                 time.sleep(retry_delay_seconds)
             else:

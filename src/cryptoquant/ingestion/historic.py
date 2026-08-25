@@ -10,12 +10,13 @@ Supports two modes:
 - **Incremental mode**: Fetch from last ingestion timestamp to now (for daily updates)
 """
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, DBAPIError
 
 from cryptoquant.collectors.coinbase_client import CandleGranularity, CoinbaseClient
 from cryptoquant.database.models import MarketPrice, TrackedPair, TradingPair
@@ -98,6 +99,8 @@ def fetch_and_store_candles(
     start_date: datetime,
     end_date: datetime,
     log: logging.Logger,
+    max_retries: int = 3,
+    retry_delay: int = 30,
 ) -> dict:
     """
     Fetch OHLCV candles for one pair and persist them to the database.
@@ -111,6 +114,8 @@ def fetch_and_store_candles(
         start_date: Inclusive start of the fetch window (UTC).
         end_date: Inclusive end of the fetch window (UTC).
         log: Logger to use for this operation.
+        max_retries: Maximum retry attempts for database errors (default: 3).
+        retry_delay: Seconds to wait between retries (default: 30).
 
     Returns:
         ``{"inserted": int, "skipped": int, "errors": int}``
@@ -142,42 +147,107 @@ def fetch_and_store_candles(
         batch_size = 100
         for i in range(0, len(candles), batch_size):
             batch = candles[i : i + batch_size]
+            batch_inserted = 0
+            batch_skipped = 0
 
             for candle in batch:
-                try:
-                    # Use a savepoint so a duplicate on one row doesn't abort
-                    # the whole batch transaction.
-                    with session.begin_nested():
-                        session.add(
-                            MarketPrice(
-                                trading_pair_id=trading_pair_id,
-                                timestamp=candle.start,
-                                open=Decimal(str(candle.open)),
-                                high=Decimal(str(candle.high)),
-                                low=Decimal(str(candle.low)),
-                                close=Decimal(str(candle.close)),
-                                volume=Decimal(str(candle.volume)),
-                                data_source="coinbase",
+                retry_count = 0
+                while retry_count <= max_retries:
+                    try:
+                        # Use a savepoint so a duplicate on one row doesn't abort
+                        # the whole batch transaction.
+                        with session.begin_nested():
+                            session.add(
+                                MarketPrice(
+                                    trading_pair_id=trading_pair_id,
+                                    timestamp=candle.start,
+                                    open=Decimal(str(candle.open)),
+                                    high=Decimal(str(candle.high)),
+                                    low=Decimal(str(candle.low)),
+                                    close=Decimal(str(candle.close)),
+                                    volume=Decimal(str(candle.volume)),
+                                    data_source="coinbase",
+                                )
                             )
+                        batch_inserted += 1
+                        break  # Success, exit retry loop
+                    except IntegrityError:
+                        # Duplicate - skip and move on
+                        batch_skipped += 1
+                        session.rollback()  # Clean up transaction state
+                        break
+                    except (OperationalError, DBAPIError) as exc:
+                        # Database connection/communication error
+                        retry_count += 1
+                        session.rollback()  # Critical: clean up invalid transaction
+                        
+                        if retry_count <= max_retries:
+                            log.warning(
+                                "Database error inserting candle for %s at %s (attempt %d/%d): %s. Retrying in %ds...",
+                                product_id,
+                                candle.start,
+                                retry_count,
+                                max_retries,
+                                exc,
+                                retry_delay,
+                            )
+                            time.sleep(retry_delay)
+                        else:
+                            log.error(
+                                "Failed to insert candle for %s at %s after %d attempts: %s",
+                                product_id,
+                                candle.start,
+                                max_retries,
+                                exc,
+                            )
+                            stats["errors"] += 1
+                    except Exception as exc:
+                        # Other unexpected errors
+                        log.error(
+                            "Error inserting candle for %s at %s: %s",
+                            product_id,
+                            candle.start,
+                            exc,
                         )
-                    stats["inserted"] += 1
-                except IntegrityError:
-                    stats["skipped"] += 1
-                except Exception as exc:
-                    log.error(
-                        "Error inserting candle for %s at %s: %s",
-                        product_id,
-                        candle.start,
-                        exc,
-                    )
-                    stats["errors"] += 1
+                        session.rollback()  # Clean up transaction state
+                        stats["errors"] += 1
+                        break
 
-            try:
-                session.commit()
-            except Exception as exc:
-                log.error("Error committing batch for %s: %s", product_id, exc)
-                session.rollback()
-                stats["errors"] += len(batch)
+            # Commit batch with retry logic
+            retry_count = 0
+            while retry_count <= max_retries:
+                try:
+                    session.commit()
+                    stats["inserted"] += batch_inserted
+                    stats["skipped"] += batch_skipped
+                    break  # Success
+                except (OperationalError, DBAPIError) as exc:
+                    retry_count += 1
+                    session.rollback()
+                    
+                    if retry_count <= max_retries:
+                        log.warning(
+                            "Database error committing batch for %s (attempt %d/%d): %s. Retrying in %ds...",
+                            product_id,
+                            retry_count,
+                            max_retries,
+                            exc,
+                            retry_delay,
+                        )
+                        time.sleep(retry_delay)
+                    else:
+                        log.error(
+                            "Failed to commit batch for %s after %d attempts: %s",
+                            product_id,
+                            max_retries,
+                            exc,
+                        )
+                        stats["errors"] += batch_inserted
+                except Exception as exc:
+                    log.error("Unexpected error committing batch for %s: %s", product_id, exc)
+                    session.rollback()
+                    stats["errors"] += batch_inserted
+                    break
 
         log.info(
             "Completed %s: %d inserted, %d skipped, %d errors",
@@ -189,6 +259,7 @@ def fetch_and_store_candles(
 
     except Exception as exc:
         log.error("Error fetching candles for %s: %s", product_id, exc)
+        session.rollback()  # Ensure clean state
         stats["errors"] += 1
 
     return stats
