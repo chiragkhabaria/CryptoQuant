@@ -34,28 +34,62 @@ from cryptoquant.ingestion.historic import GRANULARITY_MAP, get_tracked_pairs, f
 
 # Setup logging
 def setup_logging(log_file: Optional[str] = None):
-    """Configure logging to console and file"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = Path(__file__).parent.parent / "logs"
-    log_dir.mkdir(exist_ok=True)
-    
-    if log_file is None:
-        log_file = log_dir / f"historic_ingestion_{timestamp}.log"
-    
-    # Configure handlers with UTF-8 encoding to support Unicode characters
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    stream_handler = logging.StreamHandler(sys.stdout)
-    
-    # Set UTF-8 encoding for console output on Windows
-    if hasattr(stream_handler.stream, 'reconfigure'):
-        stream_handler.stream.reconfigure(encoding='utf-8', errors='replace')
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[file_handler, stream_handler]
-    )
-    return logging.getLogger(__name__)
+    """Configure logging to console and file with error handling"""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = Path(__file__).parent.parent / "logs"
+        
+        # Ensure log directory exists with proper error handling
+        try:
+            log_dir.mkdir(exist_ok=True, parents=True)
+        except Exception as e:
+            print(f"Warning: Could not create log directory {log_dir}: {e}")
+            print("Falling back to console-only logging")
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s [%(levelname)s] %(message)s",
+                handlers=[logging.StreamHandler(sys.stdout)]
+            )
+            return logging.getLogger(__name__)
+        
+        if log_file is None:
+            log_file = log_dir / f"historic_ingestion_{timestamp}.log"
+        elif not Path(log_file).is_absolute():
+            log_file = log_dir / log_file
+        
+        # Configure handlers with UTF-8 encoding to support Unicode characters
+        handlers = []
+        
+        try:
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            handlers.append(file_handler)
+        except Exception as e:
+            print(f"Warning: Could not create log file {log_file}: {e}")
+            print("Falling back to console-only logging")
+        
+        stream_handler = logging.StreamHandler(sys.stdout)
+        # Set UTF-8 encoding for console output on Windows
+        if hasattr(stream_handler.stream, 'reconfigure'):
+            try:
+                stream_handler.stream.reconfigure(encoding='utf-8', errors='replace')
+            except:
+                pass  # Ignore reconfiguration errors on some systems
+        handlers.append(stream_handler)
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            handlers=handlers
+        )
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"Logging initialized. Log file: {log_file}")
+        return logger
+    except Exception as e:
+        # Ultimate fallback - basic console logging
+        print(f"Critical error setting up logging: {e}")
+        logging.basicConfig(level=logging.INFO)
+        return logging.getLogger(__name__)
 
 
 # GRANULARITY_MAP, get_tracked_pairs, and fetch_and_store_candles are imported

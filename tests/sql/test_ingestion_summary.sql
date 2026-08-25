@@ -315,3 +315,5 @@ PRINT 'Ingestion summary complete';
 PRINT '============================================================';
 
 
+select month(timestamp) as month,year(timestamp) as year from crypto.market_prices 
+group by month(timestamp),year(timestamp) order by year(timestamp),month(timestamp)
