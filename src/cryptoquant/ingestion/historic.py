@@ -80,13 +80,16 @@ def get_last_ingestion_time(session, trading_pair_id: int) -> Optional[datetime]
         trading_pair_id: Primary key of the trading pair.
     
     Returns:
-        Most recent timestamp, or None if no data exists.
+        Most recent timestamp as timezone-aware UTC datetime, or None if no data exists.
     """
     result = (
         session.query(func.max(MarketPrice.timestamp))
         .filter(MarketPrice.trading_pair_id == trading_pair_id)
         .scalar()
     )
+    # Ensure result is timezone-aware (database returns naive datetime)
+    if result is not None:
+        result = result.replace(tzinfo=timezone.utc)
     return result
 
 
@@ -154,6 +157,17 @@ def fetch_and_store_candles(
                 retry_count = 0
                 while retry_count <= max_retries:
                     try:
+                        # Check if connection is still valid before nested transaction
+                        # This prevents stale connection errors during long-running ingestion
+                        try:
+                            session.connection()
+                        except (OperationalError, DBAPIError):
+                            # Connection is stale, force a new connection
+                            log.warning("Stale connection detected, refreshing session")
+                            session.rollback()
+                            session.close()
+                            # Session will automatically get a new connection on next use
+                        
                         # Use a savepoint so a duplicate on one row doesn't abort
                         # the whole batch transaction.
                         with session.begin_nested():
@@ -224,6 +238,10 @@ def fetch_and_store_candles(
                 except (OperationalError, DBAPIError) as exc:
                     retry_count += 1
                     session.rollback()
+                    
+                    # Force session to get a new connection after rollback
+                    # This is critical for long-running operations on Azure SQL
+                    session.close()
                     
                     if retry_count <= max_retries:
                         log.warning(

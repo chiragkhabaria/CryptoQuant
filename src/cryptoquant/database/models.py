@@ -149,3 +149,65 @@ class MarketPrice(Base):
 
     def __repr__(self) -> str:
         return f"<MarketPrice(id={self.id}, pair_id={self.trading_pair_id}, timestamp={self.timestamp}, close={self.close})>"
+
+
+class TechnicalAnalysis(Base):
+    """
+    Technical analysis results for market candles.
+
+    Stores calculated technical indicators (EMA, RSI, MACD, ATR), component scores,
+    aggregate technical score, and BUY/HOLD/AVOID signals.
+    
+    Relationship:
+        One-to-one with MarketPrice via market_price_id (authoritative FK).
+        Denormalizes trading_pair_id and timestamp for query performance.
+    """
+
+    __tablename__ = "technical_analysis"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Authoritative relationship: ONE candle → ONE technical result
+    market_price_id = Column(Integer, ForeignKey("crypto.market_prices.id"), nullable=False, unique=True, index=True)
+    
+    # Denormalized for query performance
+    trading_pair_id = Column(Integer, ForeignKey("crypto.trading_pairs.id"), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    
+    # Technical Indicators
+    ema_200 = Column(Numeric(18, 8), nullable=True, comment="Exponential Moving Average (200 periods)")
+    rsi_14 = Column(Numeric(5, 2), nullable=True, comment="Relative Strength Index (14 periods, 0-100)")
+    macd = Column(Numeric(18, 8), nullable=True, comment="MACD line (12,26)")
+    macd_signal = Column(Numeric(18, 8), nullable=True, comment="MACD signal line (9 periods)")
+    macd_histogram = Column(Numeric(18, 8), nullable=True, comment="MACD histogram (MACD - signal)")
+    atr_14 = Column(Numeric(18, 8), nullable=True, comment="Average True Range (14 periods)")
+    
+    # Component Scores (placeholders for Phase 3)
+    ema_score = Column(Numeric(5, 2), nullable=True, comment="EMA component score")
+    rsi_score = Column(Numeric(5, 2), nullable=True, comment="RSI component score")
+    macd_score = Column(Numeric(5, 2), nullable=True, comment="MACD component score")
+    atr_score = Column(Numeric(5, 2), nullable=True, comment="ATR component score")
+    technical_score = Column(Numeric(5, 2), nullable=True, comment="Aggregate technical score")
+    
+    # Signal
+    signal = Column(String(10), nullable=True, comment="BUY, HOLD, or AVOID")
+    
+    # Metadata
+    calculation_version = Column(String(10), nullable=False, default="v1", index=True)
+    calculated_at = Column(DateTime, nullable=False, server_default=func.now())
+    
+    # Relationships
+    market_price = relationship("MarketPrice")
+    trading_pair = relationship("TradingPair")
+
+    # Constraints and indexes
+    __table_args__ = (
+        UniqueConstraint("market_price_id", name="uq_technical_analysis_market_price"),
+        UniqueConstraint("trading_pair_id", "timestamp", name="uq_technical_analysis_pair_timestamp"),
+        Index("ix_technical_analysis_timestamp", "timestamp"),
+        Index("ix_technical_analysis_signal", "signal"),
+        {"schema": "crypto"},
+    )
+
+    def __repr__(self) -> str:
+        return f"<TechnicalAnalysis(id={self.id}, pair_id={self.trading_pair_id}, timestamp={self.timestamp}, signal={self.signal})>"
