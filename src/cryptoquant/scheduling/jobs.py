@@ -9,6 +9,7 @@ never terminates the scheduler process.
 import logging
 import time
 
+from cryptoquant.analytics.analytics_pipeline import analyze_all_pairs
 from cryptoquant.config.settings import get_settings
 from cryptoquant.ingestion.historic import run_ingestion
 
@@ -123,5 +124,62 @@ def historic_ingestion_job() -> None:
             else:
                 logger.exception(
                     "historic_ingestion_job: all %d attempts failed — giving up until next scheduled run",
+                    max_retries,
+                )
+
+
+def incremental_technical_analysis_job() -> None:
+    """
+    Periodic job: calculate technical indicators for new candles.
+
+    Runs in incremental mode - processes candles since last analysis timestamp.
+    Falls back to 7 days if no previous analysis exists for a pair.
+
+    Requires market_prices data to be present before running.
+    Typically scheduled to run after incremental_ingestion_job completes.
+
+    Implements retry logic (3 attempts with 60-second wait) to handle
+    transient database issues.
+
+    Exceptions are caught and logged; the scheduler process keeps running.
+    """
+    logger.info("incremental_technical_analysis_job: started")
+
+    max_retries = 3
+    retry_delay_seconds = 60
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = analyze_all_pairs(
+                incremental=True,  # Process from last analysis timestamp to now
+                calculation_version='v1'
+            )
+            logger.info(
+                "incremental_technical_analysis_job: completed — %d pairs analyzed, %d analyses saved, %d errors",
+                result['successful_pairs'],
+                result['total_analyses_saved'],
+                result['failed_pairs'],
+            )
+            if result['failed_pairs'] > 0:
+                logger.warning(
+                    "incremental_technical_analysis_job: %d pair(s) failed during analysis",
+                    result['failed_pairs'],
+                )
+            # Success - exit retry loop
+            return
+
+        except Exception as exc:
+            if attempt < max_retries:
+                logger.warning(
+                    "incremental_technical_analysis_job: attempt %d/%d failed — %s — retrying in %d seconds...",
+                    attempt,
+                    max_retries,
+                    exc,
+                    retry_delay_seconds,
+                )
+                time.sleep(retry_delay_seconds)
+            else:
+                logger.exception(
+                    "incremental_technical_analysis_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )

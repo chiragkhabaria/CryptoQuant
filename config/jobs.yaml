@@ -24,6 +24,16 @@ jobs:
     parameters:
       granularity: hourly
 
+  - id: incremental_technical_analysis
+    name: "Incremental Technical Analysis"
+    enabled: true
+    run_on_startup: false
+    type: interval
+    interval_minutes: 240
+    function: incremental_technical_analysis_job
+    parameters:
+      calculation_version: v1
+
   - id: historic_ingestion
     name: "Historic OHLCV Data Ingestion"
     enabled: false
