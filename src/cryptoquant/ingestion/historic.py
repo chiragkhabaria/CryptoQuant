@@ -80,13 +80,16 @@ def get_last_ingestion_time(session, trading_pair_id: int) -> Optional[datetime]
         trading_pair_id: Primary key of the trading pair.
     
     Returns:
-        Most recent timestamp, or None if no data exists.
+        Most recent timestamp as timezone-aware UTC datetime, or None if no data exists.
     """
     result = (
         session.query(func.max(MarketPrice.timestamp))
         .filter(MarketPrice.trading_pair_id == trading_pair_id)
         .scalar()
     )
+    # Ensure result is timezone-aware (database returns naive datetime)
+    if result is not None:
+        result = result.replace(tzinfo=timezone.utc)
     return result
 
 

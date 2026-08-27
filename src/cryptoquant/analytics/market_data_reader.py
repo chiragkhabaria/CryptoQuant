@@ -10,7 +10,7 @@ Key principle: NO LOOK-AHEAD BIAS
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -157,7 +157,8 @@ def get_last_analysis_timestamp(
         trading_pair_id: Trading pair to query
         
     Returns:
-        Most recent timestamp with analysis, or None if no analysis exists
+        Most recent timestamp with analysis as timezone-aware UTC datetime,
+        or None if no analysis exists
         
     Example:
         last_time = get_last_analysis_timestamp(session, trading_pair_id=1)
@@ -178,6 +179,10 @@ def get_last_analysis_timestamp(
             .filter(TechnicalAnalysis.trading_pair_id == trading_pair_id)
             .scalar()
         )
+        
+        # Ensure result is timezone-aware (database returns naive datetime)
+        if result is not None:
+            result = result.replace(tzinfo=timezone.utc)
         
         if result:
             logger.debug(
