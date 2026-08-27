@@ -26,7 +26,7 @@ jobs:
 
   - id: incremental_technical_analysis
     name: "Incremental Technical Analysis"
-    enabled: true
+    enabled: false
     run_on_startup: false
     type: interval
     interval_minutes: 240
