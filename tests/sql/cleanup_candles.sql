@@ -1,7 +1,7 @@
 -- =====================================================================
 -- CryptoQuant Candle Data Cleanup Script
 -- =====================================================================
--- WARNING: This deletes ALL candle data from market_prices table.
+-- WARNING: This deletes ALL candle data AND technical analysis data.
 -- Backup your data before running!
 -- =====================================================================
 
@@ -9,17 +9,26 @@ USE [fin-market-db];
 GO
 
 -- Show current state
-PRINT 'Candles before cleanup:';
+PRINT 'Before cleanup:';
 SELECT COUNT(*) AS total_candles FROM crypto.market_prices;
+SELECT COUNT(*) AS total_analysis FROM crypto.technical_analysis;
 PRINT '';
 
--- Delete all candle data
+-- Delete all data (must delete technical_analysis first due to FK constraint)
 BEGIN TRANSACTION;
 
-DELETE FROM crypto.market_prices;
+-- Delete technical analysis first (has FK to market_prices)
+DELETE FROM crypto.technical_analysis;
+PRINT 'Technical analysis deleted.';
 
-PRINT 'Candles deleted. Verifying...';
+-- Now delete market prices
+DELETE FROM crypto.market_prices;
+PRINT 'Market prices deleted.';
+
+PRINT '';
+PRINT 'Verifying...';
 SELECT COUNT(*) AS remaining_candles FROM crypto.market_prices;
+SELECT COUNT(*) AS remaining_analysis FROM crypto.technical_analysis;
 PRINT '';
 
 -- Uncomment one of the following:
