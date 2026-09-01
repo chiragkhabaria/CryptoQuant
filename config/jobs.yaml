@@ -44,3 +44,13 @@ jobs:
     parameters:
       granularity: daily
       lookback_days: 7
+
+  - id: weekly_backfill
+    name: "Weekly Data Gap Backfill"
+    enabled: true
+    run_on_startup: false
+    type: cron
+    cron: "0 3 * * 0"  # Every Sunday at 3:00 AM
+    function: weekly_backfill_job
+    parameters: {}
+
