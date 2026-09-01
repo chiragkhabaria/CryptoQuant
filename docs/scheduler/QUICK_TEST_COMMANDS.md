@@ -25,6 +25,37 @@ python -c "from cryptoquant.scheduling.jobs import incremental_technical_analysi
 python -c "from cryptoquant.scheduling.jobs import historic_ingestion_job; historic_ingestion_job()"
 ```
 
+### Weekly Backfill Job
+```powershell
+python -c "from cryptoquant.scheduling.jobs import weekly_backfill_job; weekly_backfill_job()"
+```
+
+---
+
+## Smart Gap Backfill (Weekly Automation)
+
+### Backfill Candles Only
+```powershell
+python scripts/run_backfill.py --type candles
+```
+
+### Backfill Analysis Only
+```powershell
+python scripts/run_backfill.py --type analysis
+```
+
+### Backfill Both (Default)
+```powershell
+python scripts/run_backfill.py --type all
+```
+
+### Interactive Gap Detection
+```powershell
+# Open gap detection notebooks
+jupyter notebook tests/backfill/detect_candle_gaps.ipynb
+jupyter notebook tests/backfill/detect_analysis_gaps.ipynb
+```
+
 ---
 
 ## Historical Backfill (Manual)
