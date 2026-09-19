@@ -148,10 +148,15 @@ def fetch_and_store_candles(
         log.info("Fetched %d candles for %s", len(candles), product_id)
 
         batch_size = 100
+        total_batches = (len(candles) + batch_size - 1) // batch_size
+        log.info("Inserting %d candles for %s in %d batches", len(candles), product_id, total_batches)
+        
         for i in range(0, len(candles), batch_size):
             batch = candles[i : i + batch_size]
             batch_inserted = 0
             batch_skipped = 0
+            batch_num = (i // batch_size) + 1
+            log.info("Processing batch %d/%d for %s (%d candles)", batch_num, total_batches, product_id, len(batch))
 
             for candle in batch:
                 retry_count = 0
@@ -234,6 +239,9 @@ def fetch_and_store_candles(
                     session.commit()
                     stats["inserted"] += batch_inserted
                     stats["skipped"] += batch_skipped
+                    log.info("Batch %d/%d committed: %d inserted, %d skipped (Total so far: %d inserted, %d skipped)", 
+                            batch_num, total_batches, batch_inserted, batch_skipped, 
+                            stats["inserted"], stats["skipped"])
                     break  # Success
                 except (OperationalError, DBAPIError) as exc:
                     retry_count += 1

@@ -7,7 +7,10 @@ the application layer and handle exceptions so that a single job failure
 never terminates the scheduler process.
 """
 import logging
+import subprocess
+import sys
 import time
+from pathlib import Path
 
 from cryptoquant.analytics.analytics_pipeline import analyze_all_pairs
 from cryptoquant.config.settings import get_settings
@@ -181,5 +184,79 @@ def incremental_technical_analysis_job() -> None:
             else:
                 logger.exception(
                     "incremental_technical_analysis_job: all %d attempts failed — giving up until next scheduled run",
+                    max_retries,
+                )
+
+
+def weekly_backfill_job() -> None:
+    """
+    Weekly job: detect and fill data gaps in market prices and technical analysis.
+
+    This job runs a comprehensive backfill process:
+    1. Detects gaps in hourly candle data
+    2. Fills those specific gaps (instead of re-ingesting entire periods)
+    3. Runs incremental technical analysis to fill any analysis gaps
+
+    Scheduled to run weekly (e.g., Sunday at 2 AM) to catch any gaps that
+    may have occurred due to API failures, network issues, or other problems.
+
+    Implements retry logic (3 attempts with 60-second wait) for resilience.
+
+    Exceptions are caught and logged; the scheduler process keeps running.
+    """
+    logger.info("weekly_backfill_job: started")
+
+    max_retries = 3
+    retry_delay_seconds = 60
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Run the backfill script
+            script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "run_backfill.py"
+            
+            logger.info("Executing backfill script: %s", script_path)
+            
+            result = subprocess.run(
+                [sys.executable, str(script_path), "--type", "all"],
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout
+            )
+            
+            # Log the output
+            if result.stdout:
+                for line in result.stdout.splitlines():
+                    logger.info("backfill: %s", line)
+            
+            if result.returncode == 0:
+                logger.info("weekly_backfill_job: completed successfully")
+                return
+            else:
+                error_msg = result.stderr if result.stderr else "Unknown error"
+                raise RuntimeError(f"Backfill script failed with code {result.returncode}: {error_msg}")
+
+        except subprocess.TimeoutExpired:
+            logger.exception("weekly_backfill_job: timed out after 1 hour")
+            if attempt >= max_retries:
+                logger.exception(
+                    "weekly_backfill_job: all %d attempts failed — giving up until next scheduled run",
+                    max_retries,
+                )
+                return
+            time.sleep(retry_delay_seconds)
+            
+        except Exception as exc:
+            if attempt < max_retries:
+                logger.warning(
+                    "weekly_backfill_job: attempt %d/%d failed — %s — retrying in %d seconds...",
+                    attempt,
+                    max_retries,
+                    exc,
+                    retry_delay_seconds,
+                )
+                time.sleep(retry_delay_seconds)
+            else:
+                logger.exception(
+                    "weekly_backfill_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )

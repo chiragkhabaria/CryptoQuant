@@ -302,6 +302,112 @@ python scripts/collect_historic_data.py --granularity hourly --days 30 --product
 
 ---
 
+### 4. Weekly Data Gap Backfill
+
+**Job ID**: `weekly_backfill`  
+**Function**: `weekly_backfill_job()`  
+**Schedule**: Weekly (Sunday at 3:00 AM)  
+**Status**: ✅ Enabled by default
+
+#### Purpose
+Detects and fills specific data gaps in market prices and technical analysis. Unlike full re-ingestion, this job identifies exact gap boundaries and only fetches missing data, making it efficient for routine maintenance.
+
+#### Behavior
+- **Gap Detection**: Uses SQL LEAD window function to find gaps > 1 hour
+- **Smart Backfill**: Only fetches data for specific gap time ranges
+- **Two-Phase Process**:
+  1. Backfills missing candles (market_prices)
+  2. Runs incremental technical analysis for any missing analysis records
+- **Retry Logic**: 3 attempts with 60-second delays
+- **Timeout**: 1 hour per attempt
+
+#### Configuration
+```yaml
+- id: weekly_backfill
+  name: "Weekly Data Gap Backfill"
+  enabled: true
+  run_on_startup: false
+  type: cron
+  cron: "0 3 * * 0"  # Every Sunday at 3:00 AM
+  function: weekly_backfill_job
+  parameters: {}
+```
+
+#### Manual Testing (PowerShell)
+
+**Option 1: Backfill candles only**
+```powershell
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Detect and backfill candle gaps
+python scripts/run_backfill.py --type candles
+```
+
+**Option 2: Backfill analysis only**
+```powershell
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Backfill technical analysis gaps
+python scripts/run_backfill.py --type analysis
+```
+
+**Option 3: Backfill both (default)**
+```powershell
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Run full backfill (candles + analysis)
+python scripts/run_backfill.py --type all
+```
+
+**Option 4: Interactive gap detection**
+```powershell
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Open gap detection notebook
+jupyter notebook tests/backfill/detect_candle_gaps.ipynb
+
+# Or for analysis gaps
+jupyter notebook tests/backfill/detect_analysis_gaps.ipynb
+```
+
+#### Expected Output
+```
+2026-08-31 22:34:24 [INFO] BACKFILL JOB STARTED
+2026-08-31 22:34:24 [INFO] Type: candles
+2026-08-31 22:34:26 [INFO] Detected 19 gap(s) to backfill
+2026-08-31 22:34:26 [INFO]   BTC-USD: 6 gap(s), ~270 hours missing
+2026-08-31 22:34:26 [INFO]   ETH-USD: 7 gap(s), ~246 hours missing
+2026-08-31 22:34:26 [INFO] [1/19] Processing gap for BTC-USD
+2026-08-31 22:34:26 [INFO] Gap period: 2024-05-04 09:00:00+00:00 to 2024-05-08 15:00:00+00:00
+2026-08-31 22:35:01 [INFO] BACKFILL COMPLETE: BTC-USD - Inserted: 103, Skipped: 0, Errors: 0
+...
+2026-08-31 22:38:08 [INFO] BACKFILL COMPLETE - Total inserted: 653, Total skipped: 0, Total errors: 0
+```
+
+#### Monitoring
+- **Log Files**: `logs/backfill_YYYYMMDD_HHMMSS.log`
+- **Gap Detection**: Use notebooks in `tests/backfill/`
+- **Validation**: Re-run gap detection notebooks after backfill
+
+#### Key Benefits
+- **Efficient**: Only fetches missing data, not entire historical periods
+- **Automated**: Runs weekly without manual intervention
+- **Precise**: Identifies exact gap boundaries down to the hour
+- **Safe**: Doesn't duplicate existing data
+
+#### Documentation
+See [docs/backfill/BACKFILL_SYSTEM.md](../backfill/BACKFILL_SYSTEM.md) for comprehensive backfill documentation including:
+- Gap detection notebooks
+- Backfill module API
+- Testing procedures
+- Troubleshooting guide
+
+---
+
 ## Job Management
 
 ### Starting the Scheduler
