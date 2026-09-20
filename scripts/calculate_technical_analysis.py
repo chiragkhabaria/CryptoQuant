@@ -302,4 +302,5 @@ def main(
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # standalone_mode=False propagates callback return values as process exit codes.
+    sys.exit(main(standalone_mode=False))

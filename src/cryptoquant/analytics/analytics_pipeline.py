@@ -20,7 +20,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from cryptoquant.database.models import MarketPrice, TechnicalAnalysis, TradingPair
+from cryptoquant.database.models import MarketPrice, TechnicalAnalysis, TrackedPair, TradingPair
 from cryptoquant.database.session import get_session
 
 from .indicators import calculate_all_indicators
@@ -460,10 +460,11 @@ def analyze_all_pairs(
     session = get_session()
     
     try:
-        # Get all tracked pairs
+        # Get all active tracked pairs based on tracked_pairs control table
         tracked_pairs = (
             session.query(TradingPair)
-            .filter(TradingPair.is_tracked == True)
+            .join(TrackedPair, TradingPair.symbol == TrackedPair.product_id)
+            .filter(TrackedPair.is_tracking_active == True)
             .all()
         )
         
