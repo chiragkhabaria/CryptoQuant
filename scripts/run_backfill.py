@@ -21,8 +21,10 @@ from cryptoquant.ingestion.backfill import backfill_multiple_gaps
 from sqlalchemy import text
 
 # Configure logging
+_log_dir = Path(__file__).resolve().parent.parent / "logs"
+_log_dir.mkdir(exist_ok=True)
 _file_handler = logging.FileHandler(
-    f"logs/backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log", encoding="utf-8"
+    _log_dir / f"backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log", encoding="utf-8"
 )
 _stream_handler = logging.StreamHandler(sys.stdout)
 if hasattr(_stream_handler.stream, "reconfigure"):
