@@ -21,13 +21,17 @@ from cryptoquant.ingestion.backfill import backfill_multiple_gaps
 from sqlalchemy import text
 
 # Configure logging
+_file_handler = logging.FileHandler(
+    f"logs/backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log", encoding="utf-8"
+)
+_stream_handler = logging.StreamHandler(sys.stdout)
+if hasattr(_stream_handler.stream, "reconfigure"):
+    _stream_handler.stream.reconfigure(encoding="utf-8", errors="replace")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(f"logs/backfill_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=[_file_handler, _stream_handler],
 )
 
 log = logging.getLogger(__name__)
@@ -248,7 +252,10 @@ def main():
             backfill_candles()
         
         if args.type in ["analysis", "all"]:
-            backfill_analysis()
+            analysis_returncode = backfill_analysis()
+            if analysis_returncode:
+                log.error(f"\n❌ BACKFILL JOB FAILED: analysis step exited with code {analysis_returncode}")
+                sys.exit(analysis_returncode)
         
         log.info("\n" + "=" * 80)
         log.info("✅ BACKFILL JOB COMPLETED SUCCESSFULLY")
