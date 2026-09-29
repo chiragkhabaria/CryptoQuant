@@ -315,104 +315,57 @@ ORDER BY tp.symbol;
 
 ## Phase 4: Scheduler Configuration (15 minutes)
 
-### Step 4.1: Enable Incremental Mode
+> **Note**: Scheduling has moved from the in-process APScheduler (`scripts/run_scheduler.py`)
+> to [Dagu](https://dagu.cloud/), a single-binary workflow engine with native Windows
+> support and automatic catch-up of missed runs after downtime (e.g. a power cut).
+> The DAG is defined in `deploy/dagu/crypto_backfill.yaml`. `src/cryptoquant/scheduling/`
+> and `config/jobs.yaml` remain in the repo for reference but are no longer used in
+> production.
 
-Edit `config/jobs.yaml`:
-```yaml
-jobs:
-  - id: historic_ingestion
-    name: "Historic OHLCV Data Ingestion"
-    enabled: true  # ← Re-enable for daily runs
-    run_on_startup: false
-    type: cron
-    cron: "0 2 * * *"  # Daily at 2 AM UTC
-    function: historic_ingestion_job
-```
-
-**Note**: The code changes ensure incremental mode is used (fetches from last timestamp).
-
-### Step 4.2: Test Scheduler Locally
+### Step 4.1: Install Dagu
 
 ```powershell
-# Activate venv
-.\.venv\Scripts\Activate.ps1
+irm https://raw.githubusercontent.com/dagu-org/dagu/main/scripts/installer.ps1 | iex
+dagu version
+```
+During install, accept the option to register Dagu as a Windows background service so it restarts automatically on reboot.
 
-# Test with immediate run
-# Temporarily set run_on_startup: true in jobs.yaml
-python scripts\run_scheduler.py
+### Step 4.2: Enable catch-up scheduling
+
+Copy the sample global config so Dagu's `catchup_window` (missed-run replay) is enabled — without this setting Dagu logs a warning and silently skips catch-up:
+
+```powershell
+mkdir "$env:USERPROFILE\.config\dagu" -Force
+Copy-Item D:\crypto\deploy\dagu\dagu_config.yaml "$env:USERPROFILE\.config\dagu\config.yaml"
 ```
 
-**Expected Behavior**:
-- Job runs immediately (run_on_startup: true)
-- Fetches candles from last timestamp to now
-- Should insert 0-24 new candles per pair (depending on gap)
-- Logs show: `historic_ingestion_job: completed — inserted=X, skipped=0, errors=0`
+### Step 4.3: Validate the DAG
 
-**Stop Scheduler**: Press `Ctrl+C`
+```powershell
+dagu validate D:\crypto\deploy\dagu\crypto_backfill.yaml
+```
+Copy or symlink `deploy/dagu/crypto_backfill.yaml` into Dagu's DAGs directory (default `%USERPROFILE%\.config\dagu\dags`), or start Dagu pointed at `D:\crypto\deploy\dagu` with `--dags`.
 
-**Restore Config**: Set `run_on_startup: false` in jobs.yaml
+### Step 4.4: Test a manual run
 
-### Step 4.3: Create Windows Task Scheduler Job
+```powershell
+dagu start D:\crypto\deploy\dagu\crypto_backfill.yaml
+```
+Confirm both `backfill_candles` and `backfill_analysis` steps complete successfully via `dagu status` or the Dagu Web UI (`http://localhost:8080` by default), and check `D:\crypto\logs\backfill_*.log`.
 
-1. **Open Task Scheduler**:
-   ```powershell
-   taskschd.msc
-   ```
+### Step 4.5: Start Dagu and verify auto-start
 
-2. **Create Task**:
-   - Click "Create Task" (right panel)
-   - **General Tab**:
-     - Name: `CryptoQuant Data Scheduler`
-     - Description: `Automated cryptocurrency data collection`
-     - ✅ Run whether user is logged on or not
-     - ✅ Run with highest privileges
-   
-   - **Triggers Tab**:
-     - Click "New..."
-     - Begin the task: `At startup`
-     - ✅ Enabled
-     - Click "OK"
-   
-   - **Actions Tab**:
-     - Click "New..."
-     - Action: `Start a program`
-     - Program/script: `D:\crypto\.venv\Scripts\python.exe`
-     - Add arguments: `scripts\run_scheduler.py`
-     - Start in: `D:\crypto`
-     - Click "OK"
-   
-   - **Conditions Tab**:
-     - ❌ Uncheck "Start only if on AC power"
-     - ❌ Uncheck "Stop if on battery power"
-   
-   - **Settings Tab**:
-     - ✅ Allow task to be run on demand
-     - ✅ Run task as soon as possible after scheduled start is missed
-     - ✅ If the task fails, restart every: `5 minutes`, Attempt to restart up to: `3` times
-     - Do not start a new instance: `Do not start a new instance`
+```powershell
+dagu start-all
+```
+If Dagu was registered as a Windows service in Step 4.1, this should already be running as a service — verify with `Get-Service dagu*`. Restart the mini PC and confirm the service is running and the DAG's next scheduled run appears in the Web UI.
 
-3. **Save Task**:
-   - Click "OK"
-   - Enter Windows admin password when prompted
+### Step 4.6: Decommission the old scheduler
 
-### Step 4.4: Test Auto-Start
-
-1. **Run Task Manually**:
-   - Right-click task → "Run"
-   - Check Task Scheduler "Status" column: Should show "Running"
-
-2. **Verify Logs**:
-   ```powershell
-   Get-Content D:\crypto\logs\scheduler_*.log -Tail 50
-   ```
-
-3. **Stop Task**:
-   - Right-click task → "End"
-
-4. **Test Reboot**:
-   - Restart Mini PC
-   - After reboot, check Task Scheduler: Task should be "Running"
-   - Verify logs show scheduler started
+Once Dagu has completed at least one full successful cycle, disable the previous Windows Task Scheduler entry to avoid double-scheduling and duplicate DB writes:
+```powershell
+Disable-ScheduledTask -TaskName "CryptoQuant Data Scheduler"
+```
 
 ---
 
@@ -438,14 +391,17 @@ ORDER BY tp.symbol;
 
 ### Step 5.2: Log Monitoring
 
-Check scheduler logs daily:
+Check backfill logs daily:
 
 ```powershell
 # View today's log
-Get-Content D:\crypto\logs\scheduler_*.log -Tail 100
+Get-Content D:\crypto\logs\backfill_*.log -Tail 100
 
 # Search for errors
 Select-String -Path D:\crypto\logs\*.log -Pattern "ERROR"
+
+# Dagu run history
+dagu status crypto_backfill
 ```
 
 **Healthy Logs Show**:
