@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from cryptoquant.analytics.analytics_pipeline import run_technical_analysis
 from cryptoquant.database.session import get_session
 from cryptoquant.ingestion.backfill import backfill_multiple_gaps
+from cryptoquant.ingestion.historic import run_ingestion
 from sqlalchemy import text
 
 # Configure logging
@@ -83,49 +84,71 @@ def detect_candle_gaps(session) -> list[dict]:
     return gaps
 
 
-def backfill_candles():
-    """Detect and backfill candle gaps."""
+def backfill_candles() -> int:
+    """
+    Detect and backfill candle gaps.
+
+    NOTE: Gap detection only finds holes *between* existing candles (via
+    LEAD()), which cannot see the trailing gap between the newest stored
+    candle and now — there's no "next" row to compare against for that.
+    So after filling any internal gaps, an incremental ingestion run is
+    always triggered to catch up to the present (insert is an idempotent
+    upsert, so this is safe even when there's nothing new to fetch).
+
+    Returns:
+        Total error count across internal-gap backfill and catch-up ingestion.
+    """
     log.info("=" * 80)
     log.info("BACKFILL: Starting candle gap detection and backfill")
     log.info("=" * 80)
     
+    total_errors = 0
     session = get_session()
     try:
         gaps = detect_candle_gaps(session)
         
         if not gaps:
-            log.info("✓ No candle gaps detected - data is complete!")
-            return
-        
-        log.info(f"Detected {len(gaps)} gap(s) to backfill")
-        
-        # Group by pair for logging
-        pairs = {}
-        for gap in gaps:
-            pair = gap["product_id"]
-            if pair not in pairs:
-                pairs[pair] = []
-            pairs[pair].append(gap)
-        
-        for pair, pair_gaps in pairs.items():
-            total_hours = sum([
-                (g["end_date"] - g["start_date"]).total_seconds() / 3600
-                for g in pair_gaps
-            ])
-            log.info(f"  {pair}: {len(pair_gaps)} gap(s), ~{total_hours:.0f} hours missing")
-        
-        # Execute backfill
-        stats = backfill_multiple_gaps(gaps, granularity="hourly")
-        
-        log.info("=" * 80)
-        log.info("BACKFILL COMPLETE")
-        log.info(f"Total inserted: {stats['inserted']}")
-        log.info(f"Total skipped: {stats['skipped']}")
-        log.info(f"Total errors: {stats['errors']}")
-        log.info("=" * 80)
-        
+            log.info("✓ No internal candle gaps detected")
+        else:
+            log.info(f"Detected {len(gaps)} internal gap(s) to backfill")
+            
+            # Group by pair for logging
+            pairs = {}
+            for gap in gaps:
+                pair = gap["product_id"]
+                if pair not in pairs:
+                    pairs[pair] = []
+                pairs[pair].append(gap)
+            
+            for pair, pair_gaps in pairs.items():
+                total_hours = sum([
+                    (g["end_date"] - g["start_date"]).total_seconds() / 3600
+                    for g in pair_gaps
+                ])
+                log.info(f"  {pair}: {len(pair_gaps)} gap(s), ~{total_hours:.0f} hours missing")
+            
+            # Execute backfill
+            stats = backfill_multiple_gaps(gaps, granularity="hourly")
+            total_errors += stats["errors"]
+            
+            log.info("=" * 80)
+            log.info("INTERNAL GAP BACKFILL COMPLETE")
+            log.info(f"Inserted: {stats['inserted']}, Skipped: {stats['skipped']}, Errors: {stats['errors']}")
+            log.info("=" * 80)
     finally:
         session.close()
+
+    # Catch up on candles between the newest stored timestamp and now
+    log.info("BACKFILL: Catching up candles to now (incremental)")
+    catchup_stats = run_ingestion(granularity="hourly", incremental=True)
+    total_errors += catchup_stats["errors"]
+
+    log.info("=" * 80)
+    log.info("CANDLE BACKFILL COMPLETE")
+    log.info(f"Catch-up inserted: {catchup_stats['inserted']}, skipped: {catchup_stats['skipped']}, errors: {catchup_stats['errors']}")
+    log.info("=" * 80)
+
+    return total_errors
 
 
 def detect_analysis_gaps(session) -> list[dict]:
@@ -251,7 +274,10 @@ def main():
     
     try:
         if args.type in ["candles", "all"]:
-            backfill_candles()
+            candle_errors = backfill_candles()
+            if candle_errors:
+                log.error(f"\n❌ BACKFILL JOB FAILED: candle step had {candle_errors} error(s)")
+                sys.exit(1)
         
         if args.type in ["analysis", "all"]:
             analysis_returncode = backfill_analysis()
