@@ -1,5 +1,9 @@
 # Quick Test Commands for Mini PC
 
+> Production scheduling uses Dagu. These Python commands are for manually testing
+> individual legacy APScheduler functions; use [Dagu Scheduler Reference](DAGU_SCHEDULER.md)
+> to run and inspect the production workflow.
+
 ## Setup
 ```powershell
 cd D:\data\development\crypto
@@ -91,9 +95,9 @@ python scripts/calculate_technical_analysis.py --mode historical --days 730
 
 ---
 
-## Start Scheduler
+## Start Dagu Scheduler
 ```powershell
-python scripts/run_scheduler.py
+dagu start-all --dags D:\crypto\deploy\dagu
 ```
 
 ---

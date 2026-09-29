@@ -315,57 +315,13 @@ ORDER BY tp.symbol;
 
 ## Phase 4: Scheduler Configuration (15 minutes)
 
-> **Note**: Scheduling has moved from the in-process APScheduler (`scripts/run_scheduler.py`)
-> to [Dagu](https://dagu.cloud/), a single-binary workflow engine with native Windows
-> support and automatic catch-up of missed runs after downtime (e.g. a power cut).
-> The DAG is defined in `deploy/dagu/crypto_backfill.yaml`. `src/cryptoquant/scheduling/`
-> and `config/jobs.yaml` remain in the repo for reference but are no longer used in
-> production.
-
-### Step 4.1: Install Dagu
-
-```powershell
-irm https://raw.githubusercontent.com/dagu-org/dagu/main/scripts/installer.ps1 | iex
 dagu version
-```
-During install, accept the option to register Dagu as a Windows background service so it restarts automatically on reboot.
-
-### Step 4.2: Enable catch-up scheduling
-
-Copy the sample global config so Dagu's `catchup_window` (missed-run replay) is enabled — without this setting Dagu logs a warning and silently skips catch-up:
-
-```powershell
-mkdir "$env:USERPROFILE\.config\dagu" -Force
-Copy-Item D:\crypto\deploy\dagu\dagu_config.yaml "$env:USERPROFILE\.config\dagu\config.yaml"
-```
-
-### Step 4.3: Validate the DAG
-
-```powershell
-dagu validate D:\crypto\deploy\dagu\crypto_backfill.yaml
-```
-Copy or symlink `deploy/dagu/crypto_backfill.yaml` into Dagu's DAGs directory (default `%USERPROFILE%\.config\dagu\dags`), or start Dagu pointed at `D:\crypto\deploy\dagu` with `--dags`.
-
-### Step 4.4: Test a manual run
-
-```powershell
-dagu start D:\crypto\deploy\dagu\crypto_backfill.yaml
-```
-Confirm both `backfill_candles` and `backfill_analysis` steps complete successfully via `dagu status` or the Dagu Web UI (`http://localhost:8080` by default), and check `D:\crypto\logs\backfill_*.log`.
-
-### Step 4.5: Start Dagu and verify auto-start
-
-```powershell
-dagu start-all
-```
-If Dagu was registered as a Windows service in Step 4.1, this should already be running as a service — verify with `Get-Service dagu*`. Restart the mini PC and confirm the service is running and the DAG's next scheduled run appears in the Web UI.
-
-### Step 4.6: Decommission the old scheduler
-
-Once Dagu has completed at least one full successful cycle, disable the previous Windows Task Scheduler entry to avoid double-scheduling and duplicate DB writes:
-```powershell
-Disable-ScheduledTask -TaskName "CryptoQuant Data Scheduler"
-```
+Scheduling now uses Dagu and the workflow in `deploy/dagu/crypto_backfill.yaml`.
+Follow the focused [Dagu setup guide](../setup/DAGU_SETUP.md) to install Dagu,
+enable missed-run catch-up, configure startup, test a manual run, and disable
+the former `CryptoQuant Data Scheduler` task after cutover. See the
+[Dagu scheduler reference](../scheduler/DAGU_SCHEDULER.md) for schedule details,
+recovery behavior, and common commands.
 
 ---
 
