@@ -315,11 +315,10 @@ ORDER BY tp.symbol;
 
 ## Phase 4: Scheduler Configuration (15 minutes)
 
-dagu version
-Scheduling now uses Dagu and the workflow in `deploy/dagu/crypto_backfill.yaml`.
-Follow the focused [Dagu setup guide](../setup/DAGU_SETUP.md) to install Dagu,
-enable missed-run catch-up, configure startup, test a manual run, and disable
-the former `CryptoQuant Data Scheduler` task after cutover. See the
+Scheduling now uses Dagu and the workflow in `deploy/dagu/dags/crypto_backfill.yaml`.
+Follow the focused [Dagu setup guide](../setup/DAGU_SETUP.md): install Dagu, then run
+`deploy\ps\dagu-setup.ps1` to configure and verify it, register the startup task, and
+disable the former `CryptoQuant Data Scheduler` task after cutover. See the
 [Dagu scheduler reference](../scheduler/DAGU_SCHEDULER.md) for schedule details,
 recovery behavior, and common commands.
 

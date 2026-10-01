@@ -1,14 +1,14 @@
 # Dagu Setup (Windows Mini PC)
 
-This guide installs and starts Dagu for the CryptoQuant candle and technical-analysis backfill workflow. The checked-in DAG is [crypto_backfill.yaml](../../deploy/dagu/crypto_backfill.yaml); its commands assume the project lives at `C:\data\code\git\CryptoQuant`.
+This guide installs and starts Dagu for the CryptoQuant candle and technical-analysis backfill workflow. The DAG is [crypto_backfill.yaml](../../deploy/dagu/dags/crypto_backfill.yaml); Dagu reads it directly from the repository, so there is no copy step and `git pull` is the only deploy action. The DAG contains no drive letters: its `working_dir` is relative to the DAG file, so it works wherever the repo is cloned (the mini PC uses `C:\data\code\git\CryptoQuant`).
 
 ## Prerequisites
 
-- The CryptoQuant repository is deployed at `C:\data\code\git\CryptoQuant`.
-- Project dependencies are installed in `C:\data\code\git\CryptoQuant\.venv` and `C:\data\code\git\CryptoQuant\.env` contains the required database and Coinbase settings.
-- The old `CryptoQuant Data Scheduler` task is left enabled until Dagu has passed the verification below.
-
-If the project directory is different, update `working_dir` in the DAG and verify the Python executable path before proceeding.
+- The repository is cloned on the mini PC and up to date (`git pull origin dev`).
+- `.venv` exists in the repo root with dependencies installed ([virtual environment guide](VIRTUAL_ENVIRONMENT.md)).
+- `.env` in the repo root contains the database and Coinbase settings.
+- Dagu is installed (next section).
+- The old `CryptoQuant Data Scheduler` task stays enabled until Dagu is verified.
 
 ## Install Dagu
 
@@ -18,66 +18,71 @@ Install the Windows binary using the current instructions at [Dagu Installation]
 dagu version
 ```
 
-## Enable missed-run catch-up
+## Configure and verify with the setup script
 
-Dagu reads its user config from `%USERPROFILE%\.config\dagu\config.yaml` by default. Install the repository's sample config:
-
-```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dagu" | Out-Null
-Copy-Item C:\data\code\git\CryptoQuant\deploy\dagu\dagu_config.yaml `
-  "$env:USERPROFILE\.config\dagu\config.yaml" -Force
-```
-
-The `queues.enabled: true` setting is required for this DAG's `catchup_window` to replay missed scheduled runs.
-
-## Install and validate the CryptoQuant DAG
-
-Place the DAG in Dagu's configured DAGs directory. The default installation uses `%USERPROFILE%\.config\dagu\dags`; create it and copy the file:
+From the repository root in PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dagu\dags" | Out-Null
-Copy-Item C:\data\code\git\CryptoQuant\deploy\dagu\crypto_backfill.yaml `
-  "$env:USERPROFILE\.config\dagu\dags\crypto_backfill.yaml" -Force
-
-dagu validate "$env:USERPROFILE\.config\dagu\dags\crypto_backfill.yaml"
+cd C:\data\code\git\CryptoQuant
+git pull origin dev
+.\deploy\ps\dagu-setup.ps1 -RunNow
 ```
 
-A successful validation reports that the DAG specification is valid. Then run it once manually:
+If PowerShell blocks the script, run `Set-ExecutionPolicy -Scope Process RemoteSigned` first.
 
-```powershell
-dagu start crypto_backfill
-dagu status crypto_backfill
-```
+The script is safe to re-run. It:
 
-Confirm both the `backfill_candles` and `backfill_analysis` steps succeeded. Check the application logs under `C:\data\code\git\CryptoQuant\logs\backfill_*.log` as well.
+1. Checks that `dagu`, `.venv`, `.env`, and the DAG file exist.
+2. Writes `%USERPROFILE%\.config\dagu\config.yaml` from [dagu_config.yaml](../../deploy/dagu/dagu_config.yaml) (enables `queues` for missed-run catch-up, disables the login prompt) and sets `paths.dags_dir` to the repo's `deploy\dagu\dags` folder. An existing different config is backed up first.
+3. Deletes any old copy at `%USERPROFILE%\.config\dagu\dags\crypto_backfill.yaml` (a stale copy is what produced the `entrypoint document must not define name` and `D:\crypto` errors).
+4. Runs `dagu validate` and confirms Dagu is reading the repo's DAG folder.
+5. With `-RunNow`, runs the DAG once against the live database (both steps should report `succeeded`; a step may retry once on a transient Azure SQL timeout).
+
+Logs for each run are in `logs\backfill_*.log`, and `dagu status crypto_backfill` shows the last run.
 
 ## Keep Dagu running after reboot
 
-Dagu's scheduler must remain running for scheduled jobs to fire. For this single-PC deployment, configure Windows Task Scheduler to launch Dagu at startup:
+The scheduler must be running for scheduled jobs to fire. From an **elevated** PowerShell (Run as administrator):
 
-1. Open Task Scheduler and create a task named `CryptoQuant Dagu`.
-2. Set the trigger to **At startup**. Enable **Run whether user is logged on or not** and use the Windows account that can access the project and `.env` file.
-3. Set the action to **Start a program**:
-   - Program: the full path to `dagu.exe` (find it with `Get-Command dagu`).
-   - Arguments: `start-all --dags C:\data\code\git\CryptoQuant\deploy\dagu`.
-   - Start in: `C:\data\code\git\CryptoQuant`.
-4. In **Conditions**, disable power-only restrictions. In **Settings**, enable restart on failure, prevent starting a second instance, and disable any maximum run-time limit so the scheduler is not stopped while waiting for future runs.
-5. Run the task once, then verify the Dagu server is available at `http://localhost:8080` and the scheduled DAG is listed.
+```powershell
+cd C:\data\code\git\CryptoQuant
+.\deploy\ps\dagu-setup.ps1 -RegisterStartupTask
+```
 
-The Dagu process should stay running; do not configure the task to stop it when the user logs off. If the DAG is copied to the default Dagu DAGs directory above, use that directory as the `--dags` value instead.
+This creates the `CryptoQuant Dagu` scheduled task: it runs `dagu start-all` at startup as the current user, restarts on failure, ignores a second instance, has no run-time limit, and is not stopped on battery. Start it (`Start-ScheduledTask 'CryptoQuant Dagu'`) or reboot, then open `http://localhost:8080` to see the DAG and its next run.
+
+The task runs without a stored password, so it has no network-share credentials; internet access (Azure SQL, Coinbase) is unaffected.
 
 ## Cut over from the old scheduler
 
-After Dagu has completed a successful full run and you have confirmed its startup task works:
+After Dagu has completed a successful run and the startup task works:
 
 ```powershell
-Disable-ScheduledTask -TaskName "CryptoQuant Data Scheduler"
+.\deploy\ps\dagu-setup.ps1 -DisableOldScheduler
 ```
 
-Do not run both schedulers in steady state. Both would invoke overlapping ingestion and analysis work.
+Do not run both schedulers in steady state; they would run overlapping ingestion and analysis.
+
+## Updating later
+
+```powershell
+cd C:\data\code\git\CryptoQuant
+git pull origin dev
+```
+
+No other step is needed for DAG changes. Dagu reads the repo's DAG folder directly. Re-run `dagu-setup.ps1` only if `deploy\dagu\dagu_config.yaml` changes.
 
 ## Power-cut recovery
 
-The DAG replays missed scheduled runs from the last three days after Dagu restarts. For downtime longer than three days, the next successful `run_backfill.py` execution still catches up from the latest timestamp stored in the database, so candles and analysis are not limited to that three-day replay window.
+After the mini PC restarts, the startup task starts Dagu and `catchup_window: "72h"` replays scheduled runs missed in the last three days. For longer outages, the next run of `run_backfill.py` still catches up from the latest timestamp stored in the database, so candles and analysis are not limited to that replay window.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `entrypoint document must not define name` | Dagu is reading an old copy of the DAG. Re-run `dagu-setup.ps1`, which removes the stale copy and points Dagu at the repo. |
+| `mkdir D:\crypto ... cannot find the path` | Same stale copy (older DAG had a hard-coded path). Re-run `dagu-setup.ps1`. |
+| `Dagu is using '...' instead of ...` (from the script) | A `DAGU_HOME` or `DAGU_DAGS_DIR` environment variable overrides the config. Remove it (`[Environment]::SetEnvironmentVariable('DAGU_HOME', $null, 'User')`) and open a new PowerShell. |
+| `No auth.mode configured` warning | Config not applied yet. Run `dagu-setup.ps1`. |
 
 See [Dagu Scheduler Reference](../scheduler/DAGU_SCHEDULER.md) for job behavior and operational commands.
