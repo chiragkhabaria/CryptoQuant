@@ -1,5 +1,11 @@
 # Scheduler Jobs Documentation
 
+> **Legacy reference:** Production scheduling on the mini PC now uses Dagu. The
+> APScheduler implementation described below (`scripts/run_scheduler.py`,
+> `config/jobs.yaml`, and `src/cryptoquant/scheduling/`) is retained in the repo
+> but is not the active production scheduler. See [Dagu Scheduler Reference](DAGU_SCHEDULER.md)
+> for current job behavior and [Dagu Setup](../setup/DAGU_SETUP.md) for deployment.
+
 ## Overview
 
 The CryptoQuant scheduler runs automated jobs for data ingestion and technical analysis. Jobs are defined in `config/jobs.yaml` and implemented in `src/cryptoquant/scheduling/jobs.py`.

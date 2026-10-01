@@ -1,0 +1,7 @@
+# Sample Dagu global config.
+# Copy to %USERPROFILE%\.config\dagu\config.yaml on the mini PC.
+#
+# queues.enabled is required for catchup_window (missed scheduled-run replay) to
+# function — without it Dagu logs a warning and silently skips catch-up.
+queues:
+  enabled: true

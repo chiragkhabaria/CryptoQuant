@@ -315,104 +315,13 @@ ORDER BY tp.symbol;
 
 ## Phase 4: Scheduler Configuration (15 minutes)
 
-### Step 4.1: Enable Incremental Mode
-
-Edit `config/jobs.yaml`:
-```yaml
-jobs:
-  - id: historic_ingestion
-    name: "Historic OHLCV Data Ingestion"
-    enabled: true  # ← Re-enable for daily runs
-    run_on_startup: false
-    type: cron
-    cron: "0 2 * * *"  # Daily at 2 AM UTC
-    function: historic_ingestion_job
-```
-
-**Note**: The code changes ensure incremental mode is used (fetches from last timestamp).
-
-### Step 4.2: Test Scheduler Locally
-
-```powershell
-# Activate venv
-.\.venv\Scripts\Activate.ps1
-
-# Test with immediate run
-# Temporarily set run_on_startup: true in jobs.yaml
-python scripts\run_scheduler.py
-```
-
-**Expected Behavior**:
-- Job runs immediately (run_on_startup: true)
-- Fetches candles from last timestamp to now
-- Should insert 0-24 new candles per pair (depending on gap)
-- Logs show: `historic_ingestion_job: completed — inserted=X, skipped=0, errors=0`
-
-**Stop Scheduler**: Press `Ctrl+C`
-
-**Restore Config**: Set `run_on_startup: false` in jobs.yaml
-
-### Step 4.3: Create Windows Task Scheduler Job
-
-1. **Open Task Scheduler**:
-   ```powershell
-   taskschd.msc
-   ```
-
-2. **Create Task**:
-   - Click "Create Task" (right panel)
-   - **General Tab**:
-     - Name: `CryptoQuant Data Scheduler`
-     - Description: `Automated cryptocurrency data collection`
-     - ✅ Run whether user is logged on or not
-     - ✅ Run with highest privileges
-   
-   - **Triggers Tab**:
-     - Click "New..."
-     - Begin the task: `At startup`
-     - ✅ Enabled
-     - Click "OK"
-   
-   - **Actions Tab**:
-     - Click "New..."
-     - Action: `Start a program`
-     - Program/script: `D:\crypto\.venv\Scripts\python.exe`
-     - Add arguments: `scripts\run_scheduler.py`
-     - Start in: `D:\crypto`
-     - Click "OK"
-   
-   - **Conditions Tab**:
-     - ❌ Uncheck "Start only if on AC power"
-     - ❌ Uncheck "Stop if on battery power"
-   
-   - **Settings Tab**:
-     - ✅ Allow task to be run on demand
-     - ✅ Run task as soon as possible after scheduled start is missed
-     - ✅ If the task fails, restart every: `5 minutes`, Attempt to restart up to: `3` times
-     - Do not start a new instance: `Do not start a new instance`
-
-3. **Save Task**:
-   - Click "OK"
-   - Enter Windows admin password when prompted
-
-### Step 4.4: Test Auto-Start
-
-1. **Run Task Manually**:
-   - Right-click task → "Run"
-   - Check Task Scheduler "Status" column: Should show "Running"
-
-2. **Verify Logs**:
-   ```powershell
-   Get-Content D:\crypto\logs\scheduler_*.log -Tail 50
-   ```
-
-3. **Stop Task**:
-   - Right-click task → "End"
-
-4. **Test Reboot**:
-   - Restart Mini PC
-   - After reboot, check Task Scheduler: Task should be "Running"
-   - Verify logs show scheduler started
+dagu version
+Scheduling now uses Dagu and the workflow in `deploy/dagu/crypto_backfill.yaml`.
+Follow the focused [Dagu setup guide](../setup/DAGU_SETUP.md) to install Dagu,
+enable missed-run catch-up, configure startup, test a manual run, and disable
+the former `CryptoQuant Data Scheduler` task after cutover. See the
+[Dagu scheduler reference](../scheduler/DAGU_SCHEDULER.md) for schedule details,
+recovery behavior, and common commands.
 
 ---
 
@@ -438,14 +347,17 @@ ORDER BY tp.symbol;
 
 ### Step 5.2: Log Monitoring
 
-Check scheduler logs daily:
+Check backfill logs daily:
 
 ```powershell
 # View today's log
-Get-Content D:\crypto\logs\scheduler_*.log -Tail 100
+Get-Content D:\crypto\logs\backfill_*.log -Tail 100
 
 # Search for errors
 Select-String -Path D:\crypto\logs\*.log -Pattern "ERROR"
+
+# Dagu run history
+dagu status crypto_backfill
 ```
 
 **Healthy Logs Show**:
