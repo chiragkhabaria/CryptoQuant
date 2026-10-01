@@ -94,8 +94,8 @@
 1. **Create Project Directory**:
    ```powershell
    # Create folder for the project
-   mkdir D:\crypto
-   cd D:\crypto
+   mkdir C:\data\code\git\CryptoQuant
+   cd C:\data\code\git\CryptoQuant
    ```
 
 2. **Clone from Git** (if using Git):
@@ -104,7 +104,7 @@
    ```
    
    **OR Copy Files Manually**:
-   - Copy all project files to `D:\crypto\`
+   - Copy all project files to `C:\data\code\git\CryptoQuant\`
 
 3. **Verify Structure**:
    ```powershell
@@ -116,7 +116,7 @@
 
 1. **Create venv**:
    ```powershell
-   cd D:\crypto
+   cd C:\data\code\git\CryptoQuant
    python -m venv .venv
    ```
 
@@ -135,7 +135,7 @@
 3. **Verify Activation**:
    ```powershell
    where python
-   # Should show: D:\crypto\.venv\Scripts\python.exe
+   # Should show: C:\data\code\git\CryptoQuant\.venv\Scripts\python.exe
    ```
 
 ### Step 2.3: Install Dependencies
@@ -269,7 +269,7 @@ python -c "from cryptoquant.ingestion.historic import run_ingestion; print('Star
 **Monitor Progress**:
 ```powershell
 # Open new PowerShell window
-cd D:\crypto
+cd C:\data\code\git\CryptoQuant
 Get-Content logs\historic_YYYYMMDD.log -Wait
 # Replace YYYYMMDD with today's date
 ```
@@ -351,10 +351,10 @@ Check backfill logs daily:
 
 ```powershell
 # View today's log
-Get-Content D:\crypto\logs\backfill_*.log -Tail 100
+Get-Content C:\data\code\git\CryptoQuant\logs\backfill_*.log -Tail 100
 
 # Search for errors
-Select-String -Path D:\crypto\logs\*.log -Pattern "ERROR"
+Select-String -Path C:\data\code\git\CryptoQuant\logs\*.log -Pattern "ERROR"
 
 # Dagu run history
 dagu status crypto_backfill
@@ -429,7 +429,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 2. Review error messages
 3. Verify:
    - Python path is correct
-   - "Start in" directory is correct (D:\crypto)
+   - "Start in" directory is correct (C:\data\code\git\CryptoQuant)
    - User has permissions to run task
 
 ### Issue: Incremental Mode Not Working
@@ -451,9 +451,9 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ## Maintenance
 
 ### Weekly Tasks
-- [ ] Check logs for errors: `Select-String -Path D:\crypto\logs\*.log -Pattern "ERROR"`
+- [ ] Check logs for errors: `Select-String -Path C:\data\code\git\CryptoQuant\logs\*.log -Pattern "ERROR"`
 - [ ] Verify data freshness (latest timestamp should be < 24 hours old)
-- [ ] Check disk space: `Get-PSDrive D`
+- [ ] Check disk space: `Get-PSDrive C`
 
 ### Monthly Tasks
 - [ ] Review candle count growth (should increase by ~2,880 per pair per month)
@@ -481,7 +481,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 3. Re-run historical load if needed
 
 ### If Scheduler Fails Repeatedly
-1. Check logs: `D:\crypto\logs\scheduler_*.log`
+1. Check logs: `C:\data\code\git\CryptoQuant\logs\scheduler_*.log`
 2. Verify database connectivity
 3. Check Coinbase API status: https://status.cloud.coinbase.com/
 4. Review retry logic (3 attempts, 60s delay)
@@ -495,7 +495,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 - [ ] Python 3.12+ installed and in PATH
 - [ ] Git installed (if needed)
 - [ ] ODBC Driver 18 installed
-- [ ] Project cloned to D:\crypto
+- [ ] Project cloned to C:\data\code\git\CryptoQuant
 - [ ] Virtual environment created and activated
 - [ ] Dependencies installed
 - [ ] .env file configured
@@ -525,11 +525,11 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ## Support & Resources
 
-- **Project Documentation**: `D:\crypto\docs\`
+- **Project Documentation**: `C:\data\code\git\CryptoQuant\docs\`
 - **Scheduler Guide**: `docs/development/SCHEDULER.md`
 - **Database Guide**: `docs/database/DATABASE_SETUP_GUIDE.md`
-- **Logs Location**: `D:\crypto\logs\`
-- **Configuration**: `D:\crypto\config\jobs.yaml`
+- **Logs Location**: `C:\data\code\git\CryptoQuant\logs\`
+- **Configuration**: `C:\data\code\git\CryptoQuant\config\jobs.yaml`
 
 ---
 

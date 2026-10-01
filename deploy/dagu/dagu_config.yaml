@@ -5,3 +5,7 @@
 # function — without it Dagu logs a warning and silently skips catch-up.
 queues:
   enabled: true
+
+# Set auth.mode to 'none' to disable the Web UI authentication prompt on the local mini PC
+auth:
+  mode: none

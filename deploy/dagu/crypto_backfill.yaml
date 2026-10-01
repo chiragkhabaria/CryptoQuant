@@ -10,8 +10,8 @@
 # Validate: dagu validate deploy/dagu/crypto_backfill.yaml
 # Manual run: dagu start deploy/dagu/crypto_backfill.yaml
 
-name: crypto_backfill
-working_dir: D:\crypto
+description: CryptoQuant candle + technical-analysis backfill
+working_dir: C:\data\code\git\CryptoQuant
 schedule: "0 */4 * * *"
 catchup_window: "3d"
 overlap_policy: skip

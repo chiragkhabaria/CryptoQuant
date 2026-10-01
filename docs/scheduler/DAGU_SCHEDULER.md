@@ -6,10 +6,10 @@ The production Dagu workflow is [crypto_backfill.yaml](../../deploy/dagu/crypto_
 
 | Setting | Value |
 |---|---|
-| DAG name | `crypto_backfill` |
+| DAG name | `crypto_backfill` (derived from filename) |
 | Schedule | Every 4 hours, at minute 0 (`0 */4 * * *`) |
 | Catch-up window | 3 days (`3d`); requires `queues.enabled: true` in Dagu's global config |
-| Working directory | `D:\crypto` |
+| Working directory | `C:\data\code\git\CryptoQuant` |
 | Overlap policy | `skip`; an already-running execution is not overlapped |
 | Timeout | 2 hours |
 | Retries | Up to 2 retries per step, 60 seconds apart |
@@ -32,7 +32,7 @@ Dagu catch-up is not the only recovery mechanism. Each DAG cycle first runs the 
 Run from the project directory:
 
 ```powershell
-cd D:\crypto
+cd C:\data\code\git\CryptoQuant
 
 # Validate structure and step dependencies
 dagu validate deploy\dagu\crypto_backfill.yaml
@@ -47,7 +47,7 @@ dagu status crypto_backfill
 dagu history crypto_backfill
 
 # Start the Dagu UI and scheduler using this repository's DAG directory
-dagu start-all --dags D:\crypto\deploy\dagu
+dagu start-all --dags C:\data\code\git\CryptoQuant\deploy\dagu
 ```
 
 The UI is available at `http://localhost:8080` by default. Use `dagu ls -n -l` to see scheduled DAGs and their projected next run.
@@ -57,7 +57,7 @@ The UI is available at `http://localhost:8080` by default. Use `dagu ls -n -l` t
 - **DAG does not appear in Dagu:** confirm its YAML is in the directory passed to `--dags` (or Dagu's configured DAG directory), then run `dagu ls`.
 - **Catch-up does not happen:** verify `%USERPROFILE%\.config\dagu\config.yaml` contains `queues.enabled: true`, and check Dagu logs for configuration warnings.
 - **Python or `.env` errors:** confirm `working_dir` points to the project root, `.venv\Scripts\python.exe` exists, and `.env` is present there.
-- **Step failed:** inspect Dagu's run details and `D:\crypto\logs\backfill_*.log`; fix the underlying issue before retrying.
+- **Step failed:** inspect Dagu's run details and `C:\data\code\git\CryptoQuant\logs\backfill_*.log`; fix the underlying issue before retrying.
 - **Runs overlap or duplicate:** verify the old `CryptoQuant Data Scheduler` task is disabled after cutover and the DAG retains `overlap_policy: skip`.
 
 For installation, Windows startup configuration, and initial cutover steps, see [Dagu Setup](../setup/DAGU_SETUP.md).

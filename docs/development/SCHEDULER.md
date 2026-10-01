@@ -378,9 +378,9 @@ scripts/
 
 1. **Task Trigger:** At system startup
 2. **Action:** Start a program
-   - Program: `D:\crypto\.venv\Scripts\python.exe`
-   - Arguments: `scripts\run_scheduler.py`
-   - Start in: `D:\crypto\`
+   - Program: `C:\data\code\git\CryptoQuant\.venv\Scripts\python.exe`
+   - Add arguments: `scripts\run_scheduler.py`
+   - Start in: `C:\data\code\git\CryptoQuant\`
 3. **Conditions:** Uncheck "Start only if on AC power"
 4. **Settings:** Check "Restart on failure"
 

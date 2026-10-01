@@ -1,11 +1,11 @@
 # Dagu Setup (Windows Mini PC)
 
-This guide installs and starts Dagu for the CryptoQuant candle and technical-analysis backfill workflow. The checked-in DAG is [crypto_backfill.yaml](../../deploy/dagu/crypto_backfill.yaml); its commands assume the project lives at `D:\crypto`.
+This guide installs and starts Dagu for the CryptoQuant candle and technical-analysis backfill workflow. The checked-in DAG is [crypto_backfill.yaml](../../deploy/dagu/crypto_backfill.yaml); its commands assume the project lives at `C:\data\code\git\CryptoQuant`.
 
 ## Prerequisites
 
-- The CryptoQuant repository is deployed at `D:\crypto`.
-- Project dependencies are installed in `D:\crypto\.venv` and `D:\crypto\.env` contains the required database and Coinbase settings.
+- The CryptoQuant repository is deployed at `C:\data\code\git\CryptoQuant`.
+- Project dependencies are installed in `C:\data\code\git\CryptoQuant\.venv` and `C:\data\code\git\CryptoQuant\.env` contains the required database and Coinbase settings.
 - The old `CryptoQuant Data Scheduler` task is left enabled until Dagu has passed the verification below.
 
 If the project directory is different, update `working_dir` in the DAG and verify the Python executable path before proceeding.
@@ -24,7 +24,7 @@ Dagu reads its user config from `%USERPROFILE%\.config\dagu\config.yaml` by defa
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dagu" | Out-Null
-Copy-Item D:\crypto\deploy\dagu\dagu_config.yaml `
+Copy-Item C:\data\code\git\CryptoQuant\deploy\dagu\dagu_config.yaml `
   "$env:USERPROFILE\.config\dagu\config.yaml" -Force
 ```
 
@@ -36,7 +36,7 @@ Place the DAG in Dagu's configured DAGs directory. The default installation uses
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dagu\dags" | Out-Null
-Copy-Item D:\crypto\deploy\dagu\crypto_backfill.yaml `
+Copy-Item C:\data\code\git\CryptoQuant\deploy\dagu\crypto_backfill.yaml `
   "$env:USERPROFILE\.config\dagu\dags\crypto_backfill.yaml" -Force
 
 dagu validate "$env:USERPROFILE\.config\dagu\dags\crypto_backfill.yaml"
@@ -49,7 +49,7 @@ dagu start crypto_backfill
 dagu status crypto_backfill
 ```
 
-Confirm both the `backfill_candles` and `backfill_analysis` steps succeeded. Check the application logs under `D:\crypto\logs\backfill_*.log` as well.
+Confirm both the `backfill_candles` and `backfill_analysis` steps succeeded. Check the application logs under `C:\data\code\git\CryptoQuant\logs\backfill_*.log` as well.
 
 ## Keep Dagu running after reboot
 
@@ -59,8 +59,8 @@ Dagu's scheduler must remain running for scheduled jobs to fire. For this single
 2. Set the trigger to **At startup**. Enable **Run whether user is logged on or not** and use the Windows account that can access the project and `.env` file.
 3. Set the action to **Start a program**:
    - Program: the full path to `dagu.exe` (find it with `Get-Command dagu`).
-   - Arguments: `start-all --dags D:\crypto\deploy\dagu`.
-   - Start in: `D:\crypto`.
+   - Arguments: `start-all --dags C:\data\code\git\CryptoQuant\deploy\dagu`.
+   - Start in: `C:\data\code\git\CryptoQuant`.
 4. In **Conditions**, disable power-only restrictions. In **Settings**, enable restart on failure, prevent starting a second instance, and disable any maximum run-time limit so the scheduler is not stopped while waiting for future runs.
 5. Run the task once, then verify the Dagu server is available at `http://localhost:8080` and the scheduled DAG is listed.
 
