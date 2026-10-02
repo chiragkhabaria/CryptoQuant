@@ -84,5 +84,6 @@ After the mini PC restarts, the startup task starts Dagu and `catchup_window: "7
 | `mkdir D:\crypto ... cannot find the path` | Same stale copy (older DAG had a hard-coded path). Re-run `dagu-setup.ps1`. |
 | `Dagu is using '...' instead of ...` (from the script) | A `DAGU_HOME` or `DAGU_DAGS_DIR` environment variable overrides the config. Remove it (`[Environment]::SetEnvironmentVariable('DAGU_HOME', $null, 'User')`) and open a new PowerShell. |
 | `No auth.mode configured` warning | Config not applied yet. Run `dagu-setup.ps1`. |
+| `failed to create listener on 127.0.0.1:50055 ... Only one usage of each socket address` | The Dagu installer's `Dagu` Windows service is already running `dagu start-all` (as LocalSystem, `DAGU_HOME=C:\ProgramData\Dagu`, so it does not see this repo's config or DAG). Confirm with `Get-Service Dagu`, then from an elevated shell run `.\deploy\ps\dagu-setup.ps1 -ReplaceDaguService -RegisterStartupTask` and `Start-ScheduledTask 'CryptoQuant Dagu'`. |
 
 See [Dagu Scheduler Reference](../scheduler/DAGU_SCHEDULER.md) for job behavior and operational commands.

@@ -17,6 +17,12 @@
 .PARAMETER DisableOldScheduler
     Disable the legacy "CryptoQuant Data Scheduler" task. Only use once Dagu is verified.
 
+.PARAMETER ReplaceDaguService
+    Stop and disable the "Dagu" Windows service created by the Dagu installer. It runs `dagu start-all`
+    as LocalSystem with DAGU_HOME=C:\ProgramData\Dagu (not this repo's config/DAGs) and holds ports
+    8080/50055, so `dagu start-all` and the "CryptoQuant Dagu" task fail with "bind: Only one usage of
+    each socket address". Requires an elevated shell.
+
 .PARAMETER DaguHome
     Override the Dagu home (default: %USERPROFILE%\.config\dagu). Intended for testing.
 
@@ -28,6 +34,7 @@ param(
     [switch]$RunNow,
     [switch]$RegisterStartupTask,
     [switch]$DisableOldScheduler,
+    [switch]$ReplaceDaguService,
     [string]$DaguHome = (Join-Path $env:USERPROFILE '.config\dagu')
 )
 
@@ -71,6 +78,19 @@ if (-not (Test-Path $DagFile)) { Fail "DAG file missing: $DagFile (run git pull)
 if (-not (Test-Path $Template)) { Fail "Config template missing: $Template (run git pull)" }
 Write-Host "dagu $((Invoke-Dagu version).Output -join ' ')"
 
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$daguService = Get-Service -Name 'Dagu' -ErrorAction SilentlyContinue
+if ($ReplaceDaguService -and $daguService) {
+    Write-Step "Stopping and disabling the 'Dagu' Windows service"
+    if (-not $isAdmin) { Fail 'Replacing the Dagu service needs an elevated (Run as administrator) PowerShell.' }
+    if ($daguService.Status -ne 'Stopped') { Stop-Service -Name 'Dagu' -Force }
+    Set-Service -Name 'Dagu' -StartupType Disabled
+    Write-Host "OK: service 'Dagu' stopped and disabled (re-enable with: Set-Service Dagu -StartupType Automatic; Start-Service Dagu)"
+} elseif ($daguService -and $daguService.Status -eq 'Running') {
+    Write-Host "WARNING: the 'Dagu' Windows service is running and holds ports 8080/50055 with its own config (C:\ProgramData\Dagu)." -ForegroundColor Yellow
+    Write-Host "         'dagu start-all' will fail with 'bind: Only one usage of each socket address'. Re-run from an elevated shell with -ReplaceDaguService." -ForegroundColor Yellow
+}
+
 Write-Step "Writing $ConfigPath"
 New-Item -ItemType Directory -Force $DaguHome | Out-Null
 $yamlPath = $DagsDir.Replace("'", "''")
@@ -113,7 +133,6 @@ if ($RunNow) {
 
 if ($RegisterStartupTask) {
     Write-Step "Registering scheduled task '$TaskName'"
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) { Fail 'Registering the startup task needs an elevated (Run as administrator) PowerShell.' }
     $daguExe  = (Get-Command dagu).Source
     $action   = New-ScheduledTaskAction -Execute $daguExe -Argument 'start-all' -WorkingDirectory $ProjectRoot
