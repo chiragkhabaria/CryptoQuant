@@ -359,6 +359,14 @@ def run_ingestion(
                 if last_time:
                     # Start from last timestamp + 1 hour to avoid duplicate
                     pair_start = last_time + timedelta(hours=1)
+                    # Coinbase rejects start > end (400); nothing new to fetch yet.
+                    if pair_start >= end_date:
+                        _log.info(
+                            "%s: Already up to date (last candle %s)",
+                            pair_symbol,
+                            last_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                        )
+                        continue
                     _log.info(
                         "%s: Incremental from %s",
                         pair_symbol,
