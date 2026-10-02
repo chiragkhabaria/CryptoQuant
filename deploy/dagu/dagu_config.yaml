@@ -1,7 +1,10 @@
-# Sample Dagu global config.
-# Copy to %USERPROFILE%\.config\dagu\config.yaml on the mini PC.
-#
-# queues.enabled is required for catchup_window (missed scheduled-run replay) to
-# function — without it Dagu logs a warning and silently skips catch-up.
+# Template for %USERPROFILE%\.config\dagu\config.yaml; deploy/ps/dagu-setup.ps1 appends
+# the machine-specific paths.dags_dir so no absolute path lives in git.
+
+# Required for catchup_window (missed-run replay); otherwise catch-up is silently skipped.
 queues:
   enabled: true
+
+# Local-only mini PC: skip the built-in login/setup prompt.
+auth:
+  mode: none

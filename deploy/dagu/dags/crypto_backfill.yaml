@@ -1,0 +1,30 @@
+# Dagu DAG: CryptoQuant candle + technical-analysis backfill (replaces run_scheduler.py).
+#
+# Rules that keep this file portable (enforced by tests/unit/test_dagu_dag.py):
+#   - No top-level `name:`; Dagu derives it from the filename and rejects it here.
+#   - No drive letters; working_dir is relative to THIS file, so it resolves to the repo root.
+#
+# Dagu reads this file in place via paths.dags_dir (set by deploy/ps/dagu-setup.ps1).
+# Missed runs after downtime are replayed by catchup_window; run_backfill.py also
+# self-heals from the last stored DB timestamp on every run.
+
+description: CryptoQuant candle + technical-analysis backfill
+working_dir: ../../..
+schedule: "0 */4 * * *"
+catchup_window: "72h"
+overlap_policy: skip
+timeout_sec: 7200
+
+steps:
+  - id: backfill_candles
+    run: .venv\Scripts\python.exe scripts\run_backfill.py --type candles
+    retry_policy:
+      limit: 2
+      interval_sec: 60
+
+  - id: backfill_analysis
+    run: .venv\Scripts\python.exe scripts\run_backfill.py --type analysis
+    depends: backfill_candles
+    retry_policy:
+      limit: 2
+      interval_sec: 60

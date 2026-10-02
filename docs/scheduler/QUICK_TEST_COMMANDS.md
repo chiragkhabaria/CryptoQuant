@@ -97,7 +97,7 @@ python scripts/calculate_technical_analysis.py --mode historical --days 730
 
 ## Start Dagu Scheduler
 ```powershell
-dagu start-all --dags D:\crypto\deploy\dagu
+dagu start-all
 ```
 
 ---
