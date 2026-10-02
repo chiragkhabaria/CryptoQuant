@@ -156,6 +156,16 @@ python scripts/collect_historic_data.py --granularity hourly --days 90
 
 ## Data Management
 
+### Incremental candle refresh
+
+Incremental hourly ingestion resumes from the latest stored timestamp, but
+re-fetches the last two hours before the current UTC hour as well. This is
+intentional: the newest candle can be ingested while its hour is still in
+progress. If Coinbase returns different OHLCV values for an existing timestamp,
+the row is updated; unchanged timestamps are skipped and new timestamps are
+inserted. The result statistics include `updated` in addition to `inserted`,
+`skipped`, and `errors`.
+
 ### Adding New Tracked Pairs
 
 **Option 1: SQL File (Recommended)**

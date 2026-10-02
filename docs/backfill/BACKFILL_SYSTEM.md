@@ -72,9 +72,43 @@ python scripts/run_backfill.py --type all
 
 **Process**:
 1. Queries database for gaps
-2. For candles: calls `backfill_multiple_gaps()` with detected gaps
-3. For analysis: runs incremental analysis mode
-4. Logs all operations to `logs/backfill_YYYYMMDD_HHMMSS.log`
+2. Removes configured unfillable hours from candle and analysis gaps
+3. For remaining candle gaps: calls `backfill_multiple_gaps()`
+4. Runs incremental candle ingestion to catch up and refresh recent candles
+5. For analysis: recalculates recent rows and catches up any newer candles
+6. Logs all operations to `logs/backfill_YYYYMMDD_HHMMSS.log`
+
+### Ignoring known-unfillable gaps
+
+`config/backfill_ignore.yaml` lists inclusive UTC candle hours that Coinbase
+does not return. The two ranges already observed across all tracked pairs are
+configured there. Entries without `product_id` apply to every pair; specify a
+pair to scope an exception. If an ignored range overlaps only part of a gap,
+the uncovered hours are still backfilled. Add a new entry only after confirming
+the source has no candles for that range. A missing config file means no gaps
+are ignored.
+
+```yaml
+ignore:
+   - start: "2026-05-08T02:00:00Z"
+      end: "2026-05-08T06:00:00Z"
+      reason: "Coinbase returns no candles for this range"
+```
+
+### Refreshing recent candles and analysis
+
+Incremental candle ingestion re-fetches from two hours before the current UTC
+hour. Existing candle timestamps are updated if Coinbase returns changed OHLCV
+values, unchanged rows are counted as skipped, and new timestamps are inserted.
+This corrects a recent candle if ingestion previously ran before its hour had
+closed.
+
+Incremental technical analysis uses the same two-hour refresh boundary. It
+recalculates those candles and updates existing analysis rows by
+`market_price_id`. If analysis is farther behind, it starts after the latest
+analysis timestamp so older unprocessed candles are not missed. Running
+`python scripts/run_backfill.py --type all` performs candle catch-up before
+analysis, so refreshed candles are used as inputs.
 
 ### 4. Scheduled Job
 

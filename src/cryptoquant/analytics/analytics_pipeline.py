@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Warm-up configuration
 MAX_LOOKBACK_PERIODS = 200  # EMA 200 requires 200 candles
 GRANULARITY_ONE_HOUR = '3600'  # Seconds (1 hour)
+INCREMENTAL_REFRESH_HOURS = 2
 
 
 def run_technical_analysis(
@@ -306,10 +307,16 @@ def _run_incremental(
         # Find last calculated timestamp
         last_timestamp = get_last_analysis_timestamp(session, trading_pair_id)
         
+        end_date = datetime.utcnow()
+        refresh_start = end_date.replace(minute=0, second=0, microsecond=0) - timedelta(
+            hours=INCREMENTAL_REFRESH_HOURS
+        )
+
         if last_timestamp:
             logger.info("Last analysis timestamp: %s", last_timestamp)
-            # Start from next hour after last calculation
-            start_date = last_timestamp + timedelta(hours=1)
+            # Recalculate recent rows because their source candles may have changed.
+            last_timestamp = last_timestamp.replace(tzinfo=None)
+            start_date = min(last_timestamp + timedelta(hours=1), refresh_start)
         else:
             logger.info("No prior analysis found - will process all available data")
             # Get first candle timestamp
@@ -326,9 +333,6 @@ def _run_incremental(
                 return stats
             
             start_date = first_candle.timestamp
-        
-        # Get current time as end date
-        end_date = datetime.utcnow()
         
         stats['start_date'] = start_date
         stats['end_date'] = end_date
