@@ -35,6 +35,53 @@ GRANULARITY_MAP: dict[str, CandleGranularity] = {
     "daily": CandleGranularity.ONE_DAY,
 }
 
+# Incremental runs re-fetch this many hours before the current hour, because the
+# newest stored candle may have been saved while its hour was still in progress.
+INCREMENTAL_REFRESH_HOURS = 2
+
+
+def _refresh_existing_candles(
+    session, trading_pair_id: int, candles: list, refresh_from: datetime, log: logging.Logger
+) -> tuple[list, int]:
+    """
+    Update stored candles at or after ``refresh_from`` whose values changed.
+
+    Returns the candles that were not already stored in that window (still to be
+    inserted or skipped by the normal path) and the number of rows updated.
+    """
+    naive_from = refresh_from.astimezone(timezone.utc).replace(tzinfo=None)
+    existing = {
+        row.timestamp: row
+        for row in session.query(MarketPrice).filter(
+            MarketPrice.trading_pair_id == trading_pair_id,
+            MarketPrice.timestamp >= naive_from,
+        )
+    }
+
+    remaining = []
+    updated = 0
+    for candle in candles:
+        row = existing.get(candle.start.astimezone(timezone.utc).replace(tzinfo=None))
+        if row is None:
+            remaining.append(candle)
+            continue
+        new_values = {
+            "open": Decimal(str(candle.open)),
+            "high": Decimal(str(candle.high)),
+            "low": Decimal(str(candle.low)),
+            "close": Decimal(str(candle.close)),
+            "volume": Decimal(str(candle.volume)),
+        }
+        if any(getattr(row, name) != value for name, value in new_values.items()):
+            for name, value in new_values.items():
+                setattr(row, name, value)
+            updated += 1
+            log.info("Refreshed candle %s for trading_pair_id=%d", candle.start, trading_pair_id)
+
+    if updated:
+        session.commit()
+    return remaining, updated
+
 
 def get_tracked_pairs(session, product_id: Optional[str] = None) -> list[tuple[str, int]]:
     """
@@ -104,6 +151,7 @@ def fetch_and_store_candles(
     log: logging.Logger,
     max_retries: int = 3,
     retry_delay: int = 30,
+    refresh_from: Optional[datetime] = None,
 ) -> dict:
     """
     Fetch OHLCV candles for one pair and persist them to the database.
@@ -119,11 +167,13 @@ def fetch_and_store_candles(
         log: Logger to use for this operation.
         max_retries: Maximum retry attempts for database errors (default: 3).
         retry_delay: Seconds to wait between retries (default: 30).
+        refresh_from: If set, already-stored candles at or after this time are
+            updated when Coinbase returns different values (instead of skipped).
 
     Returns:
-        ``{"inserted": int, "skipped": int, "errors": int}``
+        ``{"inserted": int, "skipped": int, "errors": int, "updated": int}``
     """
-    stats: dict[str, int] = {"inserted": 0, "skipped": 0, "errors": 0}
+    stats: dict[str, int] = {"inserted": 0, "skipped": 0, "errors": 0, "updated": 0}
 
     try:
         log.info(
@@ -146,6 +196,13 @@ def fetch_and_store_candles(
             return stats
 
         log.info("Fetched %d candles for %s", len(candles), product_id)
+
+        if refresh_from is not None:
+            fetched = len(candles)
+            candles, stats["updated"] = _refresh_existing_candles(
+                session, trading_pair_id, candles, refresh_from, log
+            )
+            stats["skipped"] += fetched - len(candles) - stats["updated"]
 
         batch_size = 100
         total_batches = (len(candles) + batch_size - 1) // batch_size
@@ -313,12 +370,14 @@ def run_ingestion(
     Modes:
         - **Historical** (incremental=False): Fetch `days` back from now.
           Use for initial 3-year data load.
-        - **Incremental** (incremental=True): Fetch from last timestamp to now.
+        - **Incremental** (incremental=True): Fetch from last timestamp to now,
+          re-fetching the last ``INCREMENTAL_REFRESH_HOURS`` so a candle stored
+          while its hour was in progress gets its final values.
           Use for daily updates. Falls back to 7 days if no previous data exists.
 
     Returns:
-        Aggregated ``{"inserted": int, "skipped": int, "errors": int}`` across
-        all processed pairs.
+        Aggregated ``{"inserted": int, "skipped": int, "errors": int, "updated": int}``
+        across all processed pairs.
 
     Raises:
         ValueError: If ``granularity`` is not a valid key, or no tracked pairs exist.
@@ -350,23 +409,19 @@ def run_ingestion(
         mode = "incremental" if incremental else "historical"
         _log.info("Processing %d pair(s) in %s mode", len(tracked_pairs), mode)
 
-        total: dict[str, int] = {"inserted": 0, "skipped": 0, "errors": 0}
+        total: dict[str, int] = {"inserted": 0, "skipped": 0, "errors": 0, "updated": 0}
 
         for pair_symbol, pair_id in tracked_pairs:
+            refresh_from = None
             # Determine start_date based on mode
             if incremental:
                 last_time = get_last_ingestion_time(session, pair_id)
+                refresh_from = end_date.replace(minute=0, second=0, microsecond=0) - timedelta(
+                    hours=INCREMENTAL_REFRESH_HOURS
+                )
                 if last_time:
-                    # Start from last timestamp + 1 hour to avoid duplicate
-                    pair_start = last_time + timedelta(hours=1)
-                    # Coinbase rejects start > end (400); nothing new to fetch yet.
-                    if pair_start >= end_date:
-                        _log.info(
-                            "%s: Already up to date (last candle %s)",
-                            pair_symbol,
-                            last_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
-                        )
-                        continue
+                    # Resume after the last candle, but always re-fetch the recent window
+                    pair_start = min(last_time + timedelta(hours=1), refresh_from)
                     _log.info(
                         "%s: Incremental from %s",
                         pair_symbol,
@@ -398,13 +453,15 @@ def run_ingestion(
                 start_date=pair_start,
                 end_date=end_date,
                 log=_log,
+                refresh_from=refresh_from,
             )
             for key in total:
                 total[key] += stats[key]
 
         _log.info(
-            "Ingestion completed: inserted=%d, skipped=%d, errors=%d",
+            "Ingestion completed: inserted=%d, updated=%d, skipped=%d, errors=%d",
             total["inserted"],
+            total["updated"],
             total["skipped"],
             total["errors"],
         )

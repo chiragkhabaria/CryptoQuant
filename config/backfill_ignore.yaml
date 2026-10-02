@@ -1,0 +1,16 @@
+# Candle ranges the backfill must NOT try to fill (the source has no data for them).
+# Add an entry here when a gap keeps reappearing in the backfill log with "No candles returned".
+#
+# Fields (all times UTC, inclusive, hourly candles):
+#   start       first missing candle (ISO 8601, quote it)
+#   end         last missing candle (defaults to start)
+#   product_id  optional, e.g. "BTC-USD"; omit to apply to every pair
+#   reason      free text
+ignore:
+  - start: "2025-10-25T16:00:00Z"
+    end: "2025-10-25T20:00:00Z"
+    reason: Coinbase returns no candles for this range (all pairs, seen 2026-10-01)
+
+  - start: "2026-05-08T02:00:00Z"
+    end: "2026-05-08T06:00:00Z"
+    reason: Coinbase returns no candles for this range (all pairs, seen 2026-10-01)

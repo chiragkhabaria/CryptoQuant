@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from cryptoquant.analytics.analytics_pipeline import run_technical_analysis
 from cryptoquant.database.session import get_session
 from cryptoquant.ingestion.backfill import backfill_multiple_gaps
+from cryptoquant.ingestion.backfill_ignore import filter_ignored_gaps, load_ignore_windows
 from cryptoquant.ingestion.historic import run_ingestion
 from sqlalchemy import text
 
@@ -105,8 +106,8 @@ def backfill_candles() -> int:
     total_errors = 0
     session = get_session()
     try:
-        gaps = detect_candle_gaps(session)
-        
+        gaps = filter_ignored_gaps(detect_candle_gaps(session), load_ignore_windows())
+
         if not gaps:
             log.info("✓ No internal candle gaps detected")
         else:
@@ -145,7 +146,7 @@ def backfill_candles() -> int:
 
     log.info("=" * 80)
     log.info("CANDLE BACKFILL COMPLETE")
-    log.info(f"Catch-up inserted: {catchup_stats['inserted']}, skipped: {catchup_stats['skipped']}, errors: {catchup_stats['errors']}")
+    log.info(f"Catch-up inserted: {catchup_stats['inserted']}, updated: {catchup_stats['updated']}, skipped: {catchup_stats['skipped']}, errors: {catchup_stats['errors']}")
     log.info("=" * 80)
 
     return total_errors
@@ -209,7 +210,7 @@ def backfill_analysis():
 
     session = get_session()
     try:
-        gaps = detect_analysis_gaps(session)
+        gaps = filter_ignored_gaps(detect_analysis_gaps(session), load_ignore_windows(), pair_key="symbol")
 
         if not gaps:
             log.info("✓ No analysis gaps detected in existing sequences")

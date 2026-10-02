@@ -58,7 +58,7 @@ class TestHistoricIngestionJob:
 
             historic_ingestion_job()
 
-            mock_run.assert_called_once_with(granularity="daily", days=2)
+            mock_run.assert_called_once_with(granularity="daily", days=2, incremental=False)
 
     def test_exception_is_logged_not_raised(self):
         """An ingestion failure must not propagate out of the job function."""
