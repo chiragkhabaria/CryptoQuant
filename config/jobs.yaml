@@ -54,3 +54,12 @@ jobs:
     function: weekly_backfill_job
     parameters: {}
 
+
+  - id: daily_backtest
+    name: "Daily Backtest of Live Signals"
+    enabled: true
+    run_on_startup: false
+    type: cron
+    cron: "30 4 * * *"  # Daily at 4:30 AM, after the 4-hourly analysis runs
+    function: daily_backtest_job
+    parameters: {}

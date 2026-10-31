@@ -1,95 +1,161 @@
 """
 Scoring Engine
 
-Converts technical indicators into component scores and aggregate signals.
+Converts technical indicators into component scores, an aggregate technical
+score and a BUY / HOLD / AVOID signal.
 
-Phase 2: All scoring functions return None (placeholder)
-Phase 3: Implement actual scoring rules and signal logic
+Scale
+-----
+Every score is on a 0-100 scale where 50 is neutral, >50 bullish and <50
+bearish. Scores fit the ``Numeric(5, 2)`` columns of ``technical_analysis``.
 
-Design:
-- Scoring rules are NOT finalized yet
-- This module provides the interface for Phase 3 implementation
-- Do not invent arbitrary thresholds without domain expert input
+Component rules (all thresholds live in :class:`ScoringConfig`)
+---------------------------------------------------------------
+- ema_score  : distance of close from EMA 200. +ema_full_scale_pct above -> 100,
+               the same distance below -> 0 (trend following).
+- rsi_score  : mean reversion. RSI <= rsi_oversold -> 100, >= rsi_overbought -> 0,
+               linear in between (50 at RSI 50).
+- macd_score : MACD histogram relative to close. +macd_full_scale_pct -> 100,
+               -macd_full_scale_pct -> 0 (momentum).
+- atr_score  : volatility penalty. ATR/close <= atr_low_pct -> 100 (calm),
+               >= atr_high_pct -> 0 (risky). Not directional.
+
+technical_score is the weighted average of the components. Signal:
+    technical_score >= buy_threshold   -> BUY
+    technical_score <  avoid_threshold -> AVOID
+    otherwise                          -> HOLD
+
+These defaults are a starting hypothesis, not a finalized strategy. Validate
+and tune them with the backtests (see docs/backtesting/BACKTESTING.md).
 """
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+SIGNAL_BUY = "BUY"
+SIGNAL_HOLD = "HOLD"
+SIGNAL_AVOID = "AVOID"
+
+
+@dataclass(frozen=True)
+class ScoringConfig:
+    """Tunable scoring parameters."""
+
+    ema_full_scale_pct: float = 0.10
+    rsi_oversold: float = 30.0
+    rsi_overbought: float = 70.0
+    macd_full_scale_pct: float = 0.002
+    atr_low_pct: float = 0.003
+    atr_high_pct: float = 0.025
+
+    weight_ema: float = 0.35
+    weight_rsi: float = 0.20
+    weight_macd: float = 0.35
+    weight_atr: float = 0.10
+
+    buy_threshold: float = 65.0
+    avoid_threshold: float = 35.0
+
+
+DEFAULT_CONFIG = ScoringConfig()
+
+_EMPTY_SCORES: Dict[str, Optional[Decimal]] = {
+    "ema_score": None,
+    "rsi_score": None,
+    "macd_score": None,
+    "atr_score": None,
+    "technical_score": None,
+}
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _to_decimal(value: float) -> Decimal:
+    return Decimal(str(round(value, 2)))
+
+
+def _f(value: Optional[Decimal]) -> Optional[float]:
+    return None if value is None else float(value)
+
 
 def calculate_scores(
-    indicators: Dict[str, Optional[Decimal]]
+    indicators: Dict[str, Optional[Decimal]],
+    close: Optional[Decimal] = None,
+    config: ScoringConfig = DEFAULT_CONFIG,
 ) -> Dict[str, Optional[Decimal]]:
     """
-    Calculate component scores from technical indicators.
-    
+    Calculate component scores and the aggregate technical score.
+
     Args:
-        indicators: Dictionary from calculate_all_indicators() containing:
-            - ema_200
-            - rsi_14
-            - macd, macd_signal, macd_histogram
-            - atr_14
-        
+        indicators: Output of calculate_all_indicators().
+        close: Close price of the candle being scored (required for the EMA
+            and ATR components).
+        config: Scoring parameters.
+
     Returns:
-        Dictionary with component scores:
-        {
-            'ema_score': Decimal or None,
-            'rsi_score': Decimal or None,
-            'macd_score': Decimal or None,
-            'atr_score': Decimal or None,
-            'technical_score': Decimal or None
-        }
-        
-    Phase 2 Implementation:
-        Returns None for all scores (placeholder for Phase 3)
-        
-    Phase 3 TODO:
-        Implement scoring rules, e.g.:
-        - ema_score: Compare price to EMA 200 (above = bullish, below = bearish)
-        - rsi_score: Overbought/oversold scoring (>70 = -1, <30 = +1)
-        - macd_score: Crossover detection (positive histogram = bullish)
-        - atr_score: Volatility scoring (high volatility = risky)
-        - technical_score: Weighted average of component scores
+        Dict with ema_score, rsi_score, macd_score, atr_score and
+        technical_score (0-100, Decimal). All None if any input needed for the
+        aggregate is missing (e.g. during indicator warm-up).
     """
-    # Placeholder: Return None for all scores until Phase 3
-    scores: Dict[str, Optional[Decimal]] = {
-        'ema_score': None,
-        'rsi_score': None,
-        'macd_score': None,
-        'atr_score': None,
-        'technical_score': None
+    ema = _f(indicators.get("ema_200"))
+    rsi = _f(indicators.get("rsi_14"))
+    hist = _f(indicators.get("macd_histogram"))
+    atr = _f(indicators.get("atr_14"))
+    price = _f(close)
+
+    if None in (ema, rsi, hist, atr, price) or not price or not ema:
+        return dict(_EMPTY_SCORES)
+
+    ema_dist = (price - ema) / ema
+    ema_score = 50 + 50 * _clamp(ema_dist / config.ema_full_scale_pct, -1, 1)
+
+    span = config.rsi_overbought - config.rsi_oversold
+    rsi_score = 100 * _clamp((config.rsi_overbought - rsi) / span, 0, 1)
+
+    macd_score = 50 + 50 * _clamp((hist / price) / config.macd_full_scale_pct, -1, 1)
+
+    atr_pct = atr / price
+    atr_score = 100 * _clamp(
+        (config.atr_high_pct - atr_pct) / (config.atr_high_pct - config.atr_low_pct), 0, 1
+    )
+
+    total_weight = config.weight_ema + config.weight_rsi + config.weight_macd + config.weight_atr
+    technical = (
+        ema_score * config.weight_ema
+        + rsi_score * config.weight_rsi
+        + macd_score * config.weight_macd
+        + atr_score * config.weight_atr
+    ) / total_weight
+
+    return {
+        "ema_score": _to_decimal(ema_score),
+        "rsi_score": _to_decimal(rsi_score),
+        "macd_score": _to_decimal(macd_score),
+        "atr_score": _to_decimal(atr_score),
+        "technical_score": _to_decimal(technical),
     }
-    
-    logger.debug("Scoring not implemented (Phase 3) - returning None for all scores")
-    
-    return scores
 
 
 def calculate_signal(
-    technical_score: Optional[Decimal]
+    technical_score: Optional[Decimal],
+    config: ScoringConfig = DEFAULT_CONFIG,
 ) -> Optional[str]:
     """
-    Determine BUY/HOLD/AVOID signal from technical score.
-    
-    Args:
-        technical_score: Aggregate technical score (output from calculate_scores)
-        
-    Returns:
-        Signal string: 'BUY', 'HOLD', or 'AVOID'
-        Or None if scoring not implemented / score unavailable
-        
-    Phase 2 Implementation:
-        Returns None (placeholder for Phase 3)
-        
-    Phase 3 TODO:
-        Implement signal logic, e.g.:
-        - BUY: technical_score > 0.5 (strong bullish)
-        - HOLD: -0.5 <= technical_score <= 0.5 (neutral)
-        - AVOID: technical_score < -0.5 (strong bearish)
+    Map the aggregate technical score to BUY / HOLD / AVOID.
+
+    Returns None when the score is unavailable (warm-up).
     """
-    # Placeholder: Return None until Phase 3
-    logger.debug("Signal logic not implemented (Phase 3) - returning None")
-    
-    return None
+    if technical_score is None:
+        return None
+    score = float(technical_score)
+    if score >= config.buy_threshold:
+        return SIGNAL_BUY
+    if score < config.avoid_threshold:
+        return SIGNAL_AVOID
+    return SIGNAL_HOLD

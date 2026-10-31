@@ -204,8 +204,8 @@ def _run_historical(
                 # Calculate indicators
                 indicators = calculate_all_indicators(lookback_candles)
                 
-                # Calculate scores and signal (Phase 3 placeholders)
-                scores = calculate_scores(indicators)
+                # Calculate scores and signal
+                scores = calculate_scores(indicators, close=target_candle.close)
                 signal = calculate_signal(scores.get('technical_score'))
                 
                 # Save to database
@@ -379,7 +379,7 @@ def _run_incremental(
                 indicators = calculate_all_indicators(lookback_candles)
                 
                 # Calculate scores and signal
-                scores = calculate_scores(indicators)
+                scores = calculate_scores(indicators, close=target_candle.close)
                 signal = calculate_signal(scores.get('technical_score'))
                 
                 # Save to database
