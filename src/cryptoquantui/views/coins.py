@@ -5,6 +5,7 @@ import streamlit as st
 from cryptoquantui import queries
 from cryptoquantui.components import charts
 from cryptoquantui.components.style import pct
+from cryptoquantui.components.tables import copyable_table
 from cryptoquantui.services import coins
 
 st.title("Coins")
@@ -16,10 +17,8 @@ if overview.empty:
     st.info("No tracked pairs found.")
     st.stop()
 
-st.dataframe(
-    overview, hide_index=True, use_container_width=True,
-    column_config={"change_pct": st.column_config.NumberColumn(f"Change {window_label} %", format="%.2f")},
-)
+st.caption(f"change_pct = price change over the last {window_label}. Use 📋 to copy a row as JSON.")
+copyable_table(overview)
 
 st.subheader("Chart")
 symbols = queries.symbols()
@@ -41,7 +40,7 @@ if candles.empty:
     st.info("No candles for this pair in the selected range.")
 else:
     candles = coins.resample_candles(candles, coins.RESAMPLE_RULES[interval])
-    st.plotly_chart(charts.price_chart(candles, symbol, ema, rsi, macd, score), use_container_width=True)
+    st.plotly_chart(charts.price_chart(candles, symbol, ema, rsi, macd, score), width="stretch")
     last = overview[overview["symbol"] == symbol]
     if not last.empty:
         r = last.iloc[0]

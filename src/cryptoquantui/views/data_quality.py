@@ -5,6 +5,7 @@ import streamlit as st
 from cryptoquant.database.job_runs import JOB_ANALYTICS, JOB_BACKFILL, JOB_INGEST
 from cryptoquantui import queries
 from cryptoquantui.components.actions import job_button
+from cryptoquantui.components.tables import copyable_table
 from cryptoquantui.services import data_quality as dq
 
 st.title("Data quality")
@@ -25,19 +26,19 @@ if fresh.empty:
     st.info("No tracked pairs found.")
 else:
     view = fresh.assign(status=fresh["icon"] + " " + fresh["status"]).drop(columns=["icon"])
-    st.dataframe(view, hide_index=True, use_container_width=True)
+    copyable_table(view)
 
 st.subheader("Completeness")
 if not complete.empty:
     pivot = complete.pivot(index="symbol", columns="window_hours", values="pct_complete")
     pivot.columns = [f"{c}h %" for c in pivot.columns]
-    st.dataframe(pivot, use_container_width=True)
+    copyable_table(pivot.reset_index())
 
 with st.expander("Integrity checks (30 days)"):
-    st.dataframe(integ, hide_index=True, use_container_width=True)
+    copyable_table(integ)
 
 with st.expander("Analysis coverage (indicators & scores)"):
-    st.dataframe(coverage, hide_index=True, use_container_width=True)
+    copyable_table(coverage)
 
 st.subheader("Gap explorer")
 symbols = fresh["symbol"].tolist() if not fresh.empty else []
@@ -47,7 +48,7 @@ if symbols:
     if gaps.empty:
         st.success("No gaps in the last 30 days.")
     else:
-        st.dataframe(gaps, hide_index=True, use_container_width=True)
+        copyable_table(gaps)
 
 st.subheader("Actions")
 job_button(JOB_INGEST)
@@ -55,6 +56,6 @@ job_button(JOB_ANALYTICS)
 job_button(JOB_BACKFILL)
 
 st.subheader("Job history")
-if st.button("Refresh history", use_container_width=True):
+if st.button("Refresh history", width="stretch"):
     queries.job_runs.clear()
-st.dataframe(queries.job_runs(), hide_index=True, use_container_width=True)
+copyable_table(queries.job_runs())

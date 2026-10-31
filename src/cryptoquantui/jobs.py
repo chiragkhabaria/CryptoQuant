@@ -34,6 +34,19 @@ JOB_LABELS = {
     JOB_RESCORE: "Rescore analysis",
 }
 
+JOB_HELP = {
+    JOB_INGEST: "Fetches the newest hourly candles from Coinbase for all tracked pairs and stores new ones. "
+    "Safe to repeat; existing candles are skipped. Same as the 4-hourly scheduler job.",
+    JOB_ANALYTICS: "Recalculates indicators (EMA200, RSI, MACD, ATR) and the 0-100 technical score for "
+    "candles that have no analysis yet. Run after refreshing candles.",
+    JOB_BACKFILL: "Looks for missing hourly candles in the stored history and downloads them. "
+    "Can take several minutes. Same as the weekly Sunday job.",
+    JOB_BACKTEST: "Replays the BUY/HOLD/AVOID signals over history for each pair using the fee, slippage and "
+    "stop settings above, and saves a new run. Previous runs are kept.",
+    JOB_RESCORE: "Recomputes the technical score and signal from stored indicators using the current "
+    "scoring weights/thresholds. Does not fetch data. Run backtests afterwards to see the impact.",
+}
+
 POLL_SECONDS = 3
 BACKFILL_TIMEOUT_SECONDS = 3600
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"

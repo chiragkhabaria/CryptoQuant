@@ -7,6 +7,7 @@ from cryptoquantui import queries
 from cryptoquantui.components import charts
 from cryptoquantui.components.actions import job_button
 from cryptoquantui.components.style import pct
+from cryptoquantui.components.tables import copyable_table
 from cryptoquantui.services import backtests as bt
 
 st.title("Backtests & score")
@@ -14,7 +15,7 @@ st.title("Backtests & score")
 with st.expander("How the score works", expanded=False):
     info = bt.score_explainer()
     st.write(info["summary"])
-    st.dataframe(info["components"], hide_index=True, use_container_width=True)
+    copyable_table(info["components"])
 
 runs = queries.latest_backtests()
 agg = bt.aggregate_summary(runs)
@@ -26,10 +27,9 @@ if runs.empty:
     st.info("No backtest runs yet. Run backtests below.")
 else:
     table = runs.assign(verdict=runs.apply(bt.verdict, axis=1))
-    st.dataframe(
+    copyable_table(
         table[["symbol", "verdict", "total_return", "benchmark_return", "excess_return", "max_drawdown",
-               "sharpe", "win_rate", "num_trades"]],
-        hide_index=True, use_container_width=True,
+               "sharpe", "win_rate", "num_trades"]]
     )
 
     symbol = st.selectbox("Pair detail", runs["symbol"].tolist())
@@ -42,10 +42,10 @@ else:
 
     curve = queries.equity_curve(run_id)
     if not curve.empty:
-        st.plotly_chart(charts.equity_chart(curve), use_container_width=True)
-        st.plotly_chart(charts.drawdown_chart(curve), use_container_width=True)
+        st.plotly_chart(charts.equity_chart(curve), width="stretch")
+        st.plotly_chart(charts.drawdown_chart(curve), width="stretch")
     with st.expander("Trades"):
-        st.dataframe(queries.trades(run_id), hide_index=True, use_container_width=True)
+        copyable_table(queries.trades(run_id))
 
     st.subheader("Does a high score precede gains?")
     horizon = st.select_slider("Forward horizon (hours)", [1, 4, 12, 24, 72, 168], value=24)
@@ -53,14 +53,14 @@ else:
     if buckets.empty:
         st.info("Not enough scored history.")
     else:
-        st.plotly_chart(charts.bucket_chart(buckets), use_container_width=True)
-        st.dataframe(buckets, hide_index=True, use_container_width=True)
+        st.plotly_chart(charts.bucket_chart(buckets), width="stretch")
+        copyable_table(buckets)
 
 st.subheader("Signal mix")
 days = st.select_slider("Last N days", [1, 7, 30, 90], value=7)
 dist = queries.signal_distribution(days)
 if not dist.empty:
-    st.plotly_chart(charts.signal_chart(dist), use_container_width=True)
+    st.plotly_chart(charts.signal_chart(dist), width="stretch")
 
 st.subheader("Actions")
 fee = st.number_input("Fee (bps)", 0.0, 200.0, 40.0, 5.0)

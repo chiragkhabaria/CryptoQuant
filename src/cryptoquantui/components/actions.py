@@ -11,14 +11,15 @@ def job_button(job_type: str, params: dict | None = None, label: str | None = No
     confirm_key = f"{key}-confirm"
 
     if not st.session_state.get(confirm_key):
-        if st.button(label, key=key, use_container_width=True):
+        st.caption(f"ℹ️ {jobs.JOB_HELP[job_type]}")
+        if st.button(label, key=key, width="stretch", help=jobs.JOB_HELP[job_type]):
             st.session_state[confirm_key] = True
             st.rerun()
         return
 
     st.warning(f"Run **{label}** now?")
     yes, no = st.columns(2)
-    if yes.button("Confirm", key=f"{key}-yes", type="primary", use_container_width=True):
+    if yes.button("Confirm", key=f"{key}-yes", type="primary", width="stretch"):
         st.session_state[confirm_key] = False
         run_id = jobs.submit(job_type, params)
         queries.job_runs.clear()
@@ -26,6 +27,6 @@ def job_button(job_type: str, params: dict | None = None, label: str | None = No
             st.info(f"{label} is already queued or running.")
         else:
             st.success(f"Queued (run #{run_id}). Track it in the history below.")
-    if no.button("Cancel", key=f"{key}-no", use_container_width=True):
+    if no.button("Cancel", key=f"{key}-no", width="stretch"):
         st.session_state[confirm_key] = False
         st.rerun()
