@@ -4,6 +4,7 @@ import streamlit as st
 
 from cryptoquantui import queries
 from cryptoquantui.components import charts
+from cryptoquantui.components.prefs import persisted
 from cryptoquantui.components.style import pct
 from cryptoquantui.components.tables import copyable_table
 from cryptoquantui.services import coins
@@ -22,9 +23,15 @@ default = coins.default_symbol(symbols)
 
 with st.expander("📈 Chart", expanded=True):
     c1, c2, c3 = st.columns([2, 1, 1])
-    symbol = c1.selectbox("Coin", symbols, index=symbols.index(default) if default in symbols else 0)
-    interval = c2.selectbox("Interval", list(coins.RESAMPLE_RULES), index=0)
-    lookback_label = c3.selectbox("Lookback", list(LOOKBACKS), index=2)
+    symbol = persisted(c1.selectbox, "Coin", "coin", default, options=symbols)
+    interval = persisted(c2.selectbox, "Interval", "interval", "1h", options=list(coins.RESAMPLE_RULES))
+    lookback_label = persisted(c3.selectbox, "Lookback", "lookback", "14D", options=list(LOOKBACKS))
+
+    t1, t2, t3, t4 = st.columns(4)
+    ema = persisted(t1.toggle, "EMA200", "ema", True)
+    rsi = persisted(t2.toggle, "RSI", "rsi", True)
+    macd = persisted(t3.toggle, "MACD", "macd", False)
+    score = persisted(t4.toggle, "Score", "score", True)
 
     candles = queries.coin_candles(symbol, LOOKBACKS[lookback_label])
     if candles.empty:
@@ -54,15 +61,10 @@ with st.expander("📈 Chart", expanded=True):
             f"from {first['timestamp']:%Y-%m-%d %H:%M} to {last['timestamp']:%Y-%m-%d %H:%M} UTC"
         )
 
-        t1, t2, t3, t4 = st.columns(4)
-        ema = t1.toggle("EMA200", True)
-        rsi = t2.toggle("RSI", True)
-        macd = t3.toggle("MACD", False)
-        score = t4.toggle("Score", True)
         st.plotly_chart(charts.price_chart(view, symbol, ema, rsi, macd, score), width="stretch")
 
 with st.expander("🪙 Coin overview", expanded=True):
-    window_label = st.radio("Window", list(coins.WINDOWS), horizontal=True)
+    window_label = persisted(st.radio, "Window", "window", "24h", options=list(coins.WINDOWS), horizontal=True)
     overview = queries.overview(coins.WINDOWS[window_label])
     st.caption(f"change_pct = price change over the last {window_label}. Use 📋 to copy a row as JSON.")
     copyable_table(overview)
