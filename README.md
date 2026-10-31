@@ -91,13 +91,13 @@ CryptoQuant/
 │   ├── collectors/           # Market data collection (Coinbase)
 │   ├── indicators/           # Technical indicators (RSI, MACD, etc.)
 │   ├── strategies/           # Trading strategies
-│   ├── backtesting/          # Backtesting engine
+│   ├── backtesting/          # Backtesting engine (Phase 3)
 │   ├── portfolio/            # Portfolio management
 │   ├── execution/            # Trade execution
 │   ├── intelligence/         # AI analysis (OpenAI)
 │   ├── functions/            # Azure Functions
-│   ├── api/                  # REST API (future)
-│   └── dashboard/            # Web dashboard (future)
+│   └── api/                  # REST API (future)
+├── src/cryptoquantui/        # Streamlit dashboard (Phase 5): app, views, services, job worker
 ├── tests/                    # Test suite
 │   ├── unit/                 # Unit tests
 │   └── integration/          # Integration tests
@@ -123,18 +123,27 @@ CryptoQuant/
 
 ## Roadmap
 
-CryptoQuant is developed in 10 phases:
+CryptoQuant is developed in 10 phases (current status: Phases 1, 2, 3 and 5 done; Phase 4 started):
 
-1. **Market Data Platform** - Coinbase integration, data collection, storage
-2. **Indicator Engine** - Technical indicators (RSI, MACD, EMA, ATR, ADX, Bollinger Bands)
-3. **Backtesting Engine** - Historical replay, performance metrics, strategy validation
-4. **Strategy Engine** - Momentum, trend following, mean reversion, DCA
-5. **AI Intelligence** - OpenAI integration, market analysis, confidence scoring
+1. ✅ **Market Data Platform** - Coinbase integration, data collection, storage
+2. ✅ **Indicator Engine** - Technical indicators (EMA, RSI, MACD, ATR) and Phase 3 scores/signals
+3. ✅ **Backtesting Engine** - Historical replay, performance metrics, strategy validation
+4. 🚧 **Strategy Engine** - Signal strategy done; momentum, trend following, mean reversion, DCA pending
+5. ✅ **UI Dashboard** - Streamlit + Plotly app (`src/cryptoquantui/`): data quality, backtests & score, coins. See [docs/ui-dashboard.md](docs/ui-dashboard.md)
+   - 5b. **AI Intelligence** (deferred) - OpenAI integration, market analysis, confidence scoring
 6. **Approval Workflow** - Email approval, audit trail, manual confirmation
 7. **Trade Execution** - Coinbase order management, execution logging
 8. **Portfolio Analytics** - PnL, allocation, performance, tax reporting
-9. **Dashboard** - FastAPI + Plotly visualization
+9. **Web Dashboard / API** - FastAPI + Plotly visualization
 10. **Future Expansion** - Additional exchanges, advanced features
+
+### Running the dashboard
+
+```bash
+pip install -e . streamlit pyodbc
+alembic upgrade head          # includes migration 008 (crypto.job_runs)
+streamlit run src/cryptoquantui/app.py --server.address 0.0.0.0 --server.port 8501
+```
 
 See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for detailed phase descriptions.
 

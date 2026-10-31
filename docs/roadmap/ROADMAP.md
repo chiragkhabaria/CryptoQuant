@@ -125,6 +125,8 @@ Implement the following technical indicators:
 
 ## Phase 3: Backtesting Engine
 
+> **Status: ✅ Done (MVP).** Scoring engine (`analytics/scoring.py`), long-only backtest engine with fees/slippage, result tables (migration 007), `scripts/run_backtest.py`, daily `daily_backtest` job and a validation notebook. See [BACKTESTING.md](../backtesting/BACKTESTING.md). Sortino/Calmar ratios and limit-order simulation remain open.
+
 **Objective**: Build a robust backtesting framework for strategy validation.
 
 ### Deliverables
@@ -184,6 +186,8 @@ Implement key performance metrics:
 ---
 
 ## Phase 4: Strategy Engine
+
+> **Status: 🚧 Started.** Strategy framework (4.1) exists: `strategies/base.py` (`Strategy` protocol, `Bar`, `Action`) and `strategies/signal_strategy.py` (long/flat strategy driven by the stored BUY/HOLD/AVOID signal), plus score-vs-forward-return analysis. Momentum, trend-following, mean-reversion and DCA strategies, the optimizer, comparison reports and the strategy registry are not built yet.
 
 **Objective**: Implement quantitative trading strategies.
 
@@ -247,6 +251,8 @@ Implement key performance metrics:
 ---
 
 ## Phase 5: UI Dashboard
+
+> **Status: ✅ Done.** Docs: [ui-dashboard.md](../ui-dashboard.md).
 
 **Objective**: A mobile-friendly Streamlit dashboard to inspect data health, backtests and coins, and to trigger jobs.
 

@@ -1,6 +1,6 @@
-# CryptoQuant — Implemented Functionality
+﻿# CryptoQuant — Implemented Functionality
 
-> **Status as of 2026-09-14** | Phases 1 & 2 complete. Phase 3 in progress.
+> **Status as of 2026-10-31** | Phases 1, 2, 3 and 5 complete. Phase 4 (strategy engine) started.
 
 ---
 
@@ -27,8 +27,10 @@ CryptoQuant is a cryptocurrency data platform that:
 
 - Fetches hourly/daily OHLCV candle data from the **Coinbase Advanced API**
 - Persists market data to an **Azure SQL Server** database (`crypto` schema)
-- Calculates **technical indicators** (EMA 200, RSI 14, MACD, ATR 14) on stored candles
-- Runs **scheduled jobs** via APScheduler for incremental ingestion and analysis
+- Calculates **technical indicators** (EMA 200, RSI 14, MACD, ATR 14) and **scores/signals** (0-100, BUY/HOLD/AVOID) on stored candles
+- **Backtests** a signal-driven long/flat strategy per pair and stores results
+- Serves a **Streamlit dashboard** (`src/cryptoquantui/`) for data quality, backtests and coin charts
+- Runs **scheduled jobs** via APScheduler for incremental ingestion and analysis, logged to `crypto.job_runs`
 - Provides **backfill utilities** to detect and fill gaps in historical data
 
 ```
@@ -41,10 +43,12 @@ CoinbaseClient (Ed25519 JWT auth, rate-limited)
 fetch_and_store_candles()  ──►  crypto.market_prices  (OHLCV time-series)
     │
     ▼
-run_technical_analysis()   ──►  crypto.technical_analysis  (EMA, RSI, MACD, ATR)
+run_technical_analysis()   ──►  crypto.technical_analysis  (EMA, RSI, MACD, ATR + scores/signal)
+    │
+    ├──► backtesting engine ──►  crypto.backtest_runs / _trades / _equity
     │
     ▼
-[Phase 3] scoring / signals / API / strategies
+Streamlit UI (src/cryptoquantui)  ◄── reads all tables, queues jobs in crypto.job_runs
 ```
 
 ---
@@ -125,12 +129,12 @@ Calculated indicator values per candle (millions of rows).
 | `macd_signal` | NUMERIC(18,8) | Signal line |
 | `macd_histogram` | NUMERIC(18,8) | Histogram (MACD − signal) |
 | `atr_14` | NUMERIC(18,8) | ATR 14 value |
-| `ema_score` | NUMERIC(5,2) | Phase 3 placeholder (NULL) |
-| `rsi_score` | NUMERIC(5,2) | Phase 3 placeholder (NULL) |
-| `macd_score` | NUMERIC(5,2) | Phase 3 placeholder (NULL) |
-| `atr_score` | NUMERIC(5,2) | Phase 3 placeholder (NULL) |
-| `technical_score` | NUMERIC(5,2) | Phase 3 placeholder (NULL) |
-| `signal` | VARCHAR(20) | Phase 3 placeholder (NULL) |
+| `ema_score` | NUMERIC(5,2) | Score 0-100 (Phase 3) |
+| `rsi_score` | NUMERIC(5,2) | Score 0-100 (Phase 3) |
+| `macd_score` | NUMERIC(5,2) | Score 0-100 (Phase 3) |
+| `atr_score` | NUMERIC(5,2) | Score 0-100 (Phase 3) |
+| `technical_score` | NUMERIC(5,2) | Score 0-100 (Phase 3) |
+| `signal` | VARCHAR(20) | `BUY` / `HOLD` / `AVOID` (Phase 3) |
 | `calculation_version` | VARCHAR(10) | e.g., `v1` |
 
 Unique constraint: `(trading_pair_id, timestamp, calculation_version)`
@@ -377,12 +381,40 @@ Persistence layer for `crypto.technical_analysis`.
 - **UPSERT logic:** Uses `UPDATE` if record exists for `(trading_pair_id, timestamp, version)`, else `INSERT`
 - Ensures idempotent re-runs
 
-### `scoring.py` (Phase 3 placeholder)
+### `scoring.py` (Phase 3 — implemented)
 
-| Function | Status | Description |
-|----------|--------|-------------|
-| `calculate_scores(indicators)` | **NULL stub** | Will score EMA, RSI, MACD, ATR |
-| `calculate_signal(scores)` | **NULL stub** | Will return `BUY` / `SELL` / `HOLD` |
+| Function | Description |
+|----------|-------------|
+| `calculate_scores(indicators)` | Scores EMA200, RSI, MACD, ATR (0-100) and a weighted `technical_score`; `None` during warm-up |
+| `calculate_signal(scores)` | Returns `BUY` (>= 65) / `HOLD` / `AVOID` (< 35) |
+
+`rescore.py` backfills scores on existing rows (`scripts/rescore_analysis.py`). Details: [BACKTESTING.md](../backtesting/BACKTESTING.md).
+
+---
+
+## Backtesting & Strategies (Phase 3 / 4)
+
+**Modules:** `src/cryptoquant/backtesting/` (`engine.py`, `runner.py`, `repository.py`, `synthetic.py`) and `src/cryptoquant/strategies/` (`base.py`, `signal_strategy.py`).
+
+- Long-only engine, next-bar-open fills, fees + slippage, optional ATR stop
+- Results stored in `crypto.backtest_runs`, `backtest_trades`, `backtest_equity` and view `vw_backtest_summary` (migration 007)
+- `scripts/run_backtest.py` backtests all tracked pairs; `daily_backtest` job reruns it daily
+- Phase 4 so far: `SignalStrategy` (BUY enters, AVOID exits)
+
+---
+
+## UI Dashboard (Phase 5)
+
+**Package:** `src/cryptoquantui/` (Streamlit + Plotly; run with `streamlit run src/cryptoquantui/app.py`). Full guide: [../ui-dashboard.md](../ui-dashboard.md).
+
+| Piece | Description |
+|-------|-------------|
+| Coins page | Chart (candles, EMA200, RSI, MACD, score; lookback, price change header) + overview of all tracked coins |
+| Data quality page | Freshness, completeness, gaps, integrity, analysis coverage, job history |
+| Backtests & score page | Score explainer, per-pair results, equity/drawdown |
+| Actions | Refresh / backfill / indicators / backtest / rescore, queued in `crypto.job_runs` and run by a worker (`python -m cryptoquantui.worker` or in-process thread) |
+| `crypto.job_runs` | Run log + queue (migration 008); also written by every scheduler job via `@tracked_job` |
+| `services/` | Streamlit-free logic (`data_quality`, `backtests`, `coins`) |
 
 ---
 
@@ -406,6 +438,7 @@ Persistence layer for `crypto.technical_analysis`.
 | `incremental_technical_analysis` | interval | Every 240 min (4 hrs) | ✅ | `incremental_technical_analysis_job()` |
 | `historic_ingestion` | cron | Daily 02:00 UTC | ❌ disabled | `historic_ingestion_job()` |
 | `weekly_backfill` | cron | Sundays 03:00 UTC | ✅ | `weekly_backfill_job()` |
+| `daily_backtest` | cron | Daily 04:30 UTC | ✅ | `daily_backtest_job()` |
 
 ### Job Functions (`jobs.py`)
 
@@ -415,6 +448,9 @@ Persistence layer for `crypto.technical_analysis`.
 | `historic_ingestion_job()` | Fetches `lookback_days` of daily candles (used for manual catch-up) |
 | `incremental_technical_analysis_job()` | Calculates indicators for all candles since last analysis timestamp |
 | `weekly_backfill_job()` | Runs gap detection and fills missing candles every Sunday |
+| `daily_backtest_job()` | Rescores and reruns backtests for all tracked pairs |
+
+All jobs are wrapped by `@tracked_job` and write start/finish/status rows to `crypto.job_runs`.
 
 **Fault isolation:** Each job catches its own exceptions — a failed job does not kill the scheduler.
 
@@ -441,6 +477,8 @@ Persistence layer for `crypto.technical_analysis`.
 | `003_add_product_id_to_assets.py` | Adds `product_id` column to `assets` |
 | `005_create_tracked_pairs.py` | Creates `tracked_pairs` table |
 | `006_technical_analysis.py` | Creates `technical_analysis` table with all indicator columns |
+| `007_backtest_tables.py` | Creates `backtest_runs`, `backtest_trades`, `backtest_equity`, view `vw_backtest_summary` |
+| `008_job_runs.py` | Creates `crypto.job_runs` (run log + UI job queue) |
 
 ---
 
@@ -458,6 +496,8 @@ Located in `scripts/`:
 | `db_migrate.py` | ✅ | Apply pending Alembic migrations |
 | `db_reset.py` | ✅ | Drop and recreate all tables (destructive) |
 | `verify_technical_analysis.py` | ✅ | Display stored analysis records for validation |
+| `rescore_analysis.py` | ✅ | Backfill scores/signals on existing `technical_analysis` rows |
+| `run_backtest.py` | ✅ | Backtest all tracked pairs and persist results |
 | `seed_database.py` | ⚠️ TODO | Seed reference data (assets, trading_pairs) |
 | `collect_market_data.py` | ⚠️ TODO | Collect current spot prices |
 | `generate_indicators.py` | ⚠️ TODO | Batch indicator generation from existing history |
@@ -467,7 +507,13 @@ Located in `scripts/`:
 
 ## Tests
 
-**Location:** `tests/ingestion/`
+**Location:** `tests/unit/` (in-memory SQLite), `tests/validation/`, `tests/ingestion/`
+
+Unit tests (`tests/unit/`): scoring, backtest engine and persistence, score strategy, scheduler, Dagu DAG, backfill ignore list, incremental analytics, UI services and UI pages (Streamlit `AppTest`). Run: `pytest tests/unit`.
+
+Validation notebook: `tests/validation/phase3_scoring_backtest_validation.ipynb`.
+
+**Ingestion tests** (`tests/ingestion/`):
 
 | File | Type | Coverage |
 |------|------|----------|
@@ -502,34 +548,40 @@ Located in `scripts/`:
 - `weekly_backfill_job` scheduler entry
 - `tracked_pairs` table for monitoring control
 
-### 🚧 Phase 3 — Signals & Intelligence (Pending)
+### ✅ Phase 3 — Scoring & Backtesting (Complete, MVP)
 
-These modules exist as empty stubs or placeholder implementations:
+- Scoring engine (`analytics/scoring.py`) and `rescore.py`
+- Backtest engine, runner, persistence (migration 007), `daily_backtest` job
+- Validation notebook `tests/validation/phase3_scoring_backtest_validation.ipynb`
 
-| Module | File | What's Needed |
-|--------|------|---------------|
-| **Scoring engine** | `analytics/scoring.py` | Implement `calculate_scores()` and `calculate_signal()` with business rules |
-| **REST API** | `api/` | FastAPI endpoints for market data and analysis queries |
-| **Trading strategies** | `strategies/` | Strategy definitions using indicator signals |
-| **Backtesting** | `backtesting/` | Replay historical data against strategies |
-| **Portfolio tracking** | `portfolio/` | Position management and P&L |
-| **Trade execution** | `execution/` | Order placement via Coinbase API |
-| **ML / Intelligence** | `intelligence/` | ML models for price prediction |
-| **Dashboard** | `dashboard/` | UI visualisation of data and signals |
-| **Common utilities** | `common/` | Shared helpers |
-| **Serverless functions** | `functions/` | Azure Function triggers |
+### 🚧 Phase 4 — Strategy Engine (Started)
+
+- Done: `Strategy` protocol and `SignalStrategy` (long/flat on BUY/AVOID)
+- Pending: momentum / trend / mean-reversion / DCA strategies, optimizer, comparison, registry
+
+### ✅ Phase 5 — UI Dashboard (Complete)
+
+- Streamlit + Plotly app in `src/cryptoquantui/`, `crypto.job_runs` (migration 008), Dockerfile; see [../ui-dashboard.md](../ui-dashboard.md)
+
+### Not started (empty stubs)
+
+| Module | Planned phase |
+|--------|---------------|
+| `api/` (FastAPI) | 9 |
+| `intelligence/` (AI) | 5b (deferred) |
+| `portfolio/` | 8 |
+| `execution/` | 7 |
+| `functions/`, `common/` | — |
 
 ### ⚠️ Known Gaps & TODOs
 
 | Area | Gap | Priority |
 |------|-----|----------|
-| Scoring | `calculate_scores()` returns all NULLs | Phase 3 blocker |
-| Signal | `calculate_signal()` returns NULL | Phase 3 blocker |
 | Scripts | `seed_database.py` not implemented | Setup friction |
 | Scripts | `collect_market_data.py` not implemented | Spot price support missing |
-| Scripts | `generate_indicators.py` not implemented | Batch re-generation not possible without it |
+| Scripts | `generate_indicators.py` not implemented | Use `calculate_technical_analysis.py` instead |
 | Migration | No migration `004` (gap in sequence) | Minor — cosmetic only |
-| Tests | No unit tests for `indicators.py` | Risk for regression |
-| Tests | No unit tests for `coinbase_client.py` | Risk for regression |
+| Tests | No unit tests for `indicators.py` or `coinbase_client.py` | Risk for regression |
 | Tests | No integration tests in `tests/integration/` | Empty folder |
-| Tests | No tests for `scoring.py` or `analytics_pipeline.py` | Risk for Phase 3 |
+| Backtesting | No Sortino/Calmar ratios, no limit orders | Phase 3 follow-up |
+| UI | Not yet deployed to Azure App Service (container ready) | Optional |

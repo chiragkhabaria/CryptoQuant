@@ -116,8 +116,8 @@ graph TD
 **Purpose**: User interfaces and external APIs.
 
 **Components**:
+- `cryptoquantui/` (`src/cryptoquantui/`) - Streamlit + Plotly dashboard (Phase 5); reads the database and queues jobs through `crypto.job_runs`. See [../ui-dashboard.md](../ui-dashboard.md)
 - `api/` - FastAPI REST endpoints (future)
-- `dashboard/` - Web-based visualization dashboard (future)
 - `notebooks/` - Jupyter notebooks for research
 
 **Responsibilities**:

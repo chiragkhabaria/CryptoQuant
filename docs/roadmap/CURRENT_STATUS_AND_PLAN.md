@@ -8,14 +8,17 @@
 |-------|------|--------|
 | 1 | Market Data Platform (Coinbase client, Azure SQL, Alembic, ingestion, scheduler) | **Done** (hardening gaps below) |
 | 2 | Indicator Engine (EMA200, RSI14, MACD, ATR14, `technical_analysis`, backfill) | **Done** (ADX / Bollinger / SMA from roadmap not built) |
-| 3 | Signals & scoring → Backtesting | **Next / in progress** — `scoring.py` still returns NULL for all scores/signal |
-| 4-10 | Strategy, AI, Approval, Execution, Portfolio, Dashboard, Expansion | Empty stubs |
+| 3 | Scoring & Backtesting | **Done (MVP)** — scoring engine, backtest engine, `backtest_*` tables (migration 007), `daily_backtest` job, validation notebook. See `docs/backtesting/BACKTESTING.md` |
+| 4 | Strategy Engine | **Started** — `Strategy` protocol + `SignalStrategy` (long/flat on BUY/AVOID). Momentum / trend / mean-reversion / DCA, optimizer, registry not built |
+| 5 | UI Dashboard (Streamlit + Plotly, `src/cryptoquantui/`) | **Done** — Coins, Data quality, Backtests & score pages; `crypto.job_runs` run log + job queue (migration 008). See `docs/ui-dashboard.md` |
+| 5b | AI Intelligence | Deferred (empty stub) |
+| 6-10 | Approval, Execution, Portfolio, Web dashboard/API, Expansion | Empty stubs |
 
-Implemented beyond the original roadmap: Ed25519 JWT auth, historic + incremental ingestion, gap detection/backfill with ignore list, APScheduler + Dagu, `tracked_pairs`, mini-PC deployment docs.
+Implemented beyond the original roadmap: Ed25519 JWT auth, historic + incremental ingestion, gap detection/backfill with ignore list, APScheduler + Dagu, `tracked_pairs`, mini-PC deployment docs, job run log (`job_runs`) written by every scheduler job.
 
-Working tree: uncommitted doc/comment-only changes (scoring.py, models.py comments, two ingestion notebooks, one SQL test). Unit tests in `tests/unit` run on Python 3.12 venv; total coverage ≈ 44%.
+Unit tests in `tests/unit` (scoring, backtest engine/persistence, strategy, scheduler, UI services and pages) run on the project venv.
 
-## 2. Plan to wrap up Phase 3 today (ordered)
+## 2. Phase 3 wrap-up plan (historical — completed)
 
 1. **Housekeeping (15 min)** — commit current doc/notebook changes; mark stale Phase-1 items done; delete `__pycache__` from tests tree (confirm gitignored).
 2. **Test safety net (1.5 h)** — unit tests for `indicators.py` (compare against hand-computed / pandas reference, no-lookahead), `coinbase_client.py` (mocked HTTP: pagination, 429 retry, auth header), `scoring.py`, `analytics_pipeline.py`.
@@ -29,9 +32,9 @@ Working tree: uncommitted doc/comment-only changes (scoring.py, models.py commen
 
 Stretch (if time): FastAPI read endpoints (`/pairs`, `/candles`, `/analysis`, `/signals`); ADX/Bollinger/SMA indicators.
 
-## 3. Deferred (not today)
+## 3. Next / deferred
 
-Strategy engine & optimisation (4), AI intelligence (5), approval workflow (6), live execution (7, needs safety design), portfolio analytics (8), dashboard (9).
+Next: finish Phase 4 (additional strategies, optimizer, comparison, registry). Deferred: AI intelligence (5b), approval workflow (6), live execution (7, needs safety design), portfolio analytics (8), REST API / FastAPI (9), Azure App Service deployment of the UI (container is ready).
 
 ## 4. Risks / open questions
 

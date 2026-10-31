@@ -414,6 +414,23 @@ See [docs/backfill/BACKFILL_SYSTEM.md](../backfill/BACKFILL_SYSTEM.md) for compr
 
 ---
 
+### 5. Daily Backtest
+
+**Job ID**: `daily_backtest`  
+**Function**: `daily_backtest_job()`  
+**Schedule**: Daily at 04:30 (`30 4 * * *`)  
+**Status**: ✅ Enabled by default
+
+Rescores recent analysis rows and reruns the backtest for every tracked pair, persisting to `crypto.backtest_*`. Results appear on the dashboard's **Backtests & score** page. See [../backtesting/BACKTESTING.md](../backtesting/BACKTESTING.md).
+
+---
+
+### Job run logging (`crypto.job_runs`)
+
+Every job above is wrapped with `@tracked_job` and records start/finish/status/error in `crypto.job_runs` (migration 008). The dashboard's **Data quality** page shows this history and can queue manual runs through the same table. Set `JOB_LOG_ENABLED=0` to disable logging (used by tests).
+
+---
+
 ## Job Management
 
 ### Starting the Scheduler
@@ -645,7 +662,8 @@ Get-Content logs\scheduler_$(Get-Date -Format 'yyyyMMdd').log | Select-String "E
 2. **Start Scheduler**: Run `python scripts/run_scheduler.py`
 3. **Monitor Logs**: Check `logs/scheduler_YYYYMMDD.log` for job execution
 4. **Validate Data**: Run SQL validation scripts in `tests/sql/`
-5. **Phase 3**: Implement scoring and signal generation logic
+5. **Dashboard**: Run `streamlit run src/cryptoquantui/app.py` to see job history (Data quality page); every job writes to `crypto.job_runs` (see `docs/ui-dashboard.md`)
+6. **Next**: Phase 4 strategy engine (scoring/backtesting from Phase 3 already run via `daily_backtest`)
 
 ---
 

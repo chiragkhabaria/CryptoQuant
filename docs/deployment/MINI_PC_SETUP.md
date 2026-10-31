@@ -378,6 +378,14 @@ Set up email alerts for errors:
 
 ---
 
+## Dashboard (optional)
+
+Install the UI extras, apply migrations (`alembic upgrade head`, includes `crypto.job_runs`) and run
+`streamlit run src\cryptoquantui\app.py --server.address 0.0.0.0 --server.port 8501`. Full guide
+(firewall, Tailscale, startup task, Azure App Service): [../ui-dashboard.md](../ui-dashboard.md).
+
+---
+
 ## Troubleshooting
 
 ### Issue: Python Not Found

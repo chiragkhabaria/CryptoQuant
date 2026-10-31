@@ -11,6 +11,12 @@ Metrics: total/benchmark/excess return, CAGR, max drawdown, Sharpe, trades, win 
 ## Storage (Azure SQL, migration 007)
 `crypto.backtest_runs`, `crypto.backtest_trades`, `crypto.backtest_equity`, view `crypto.vw_backtest_summary`.
 
+## Strategies (Phase 4, started)
+`strategies/base.py` defines the `Strategy` protocol (`Bar`, `Action`); `strategies/signal_strategy.py` is the long/flat `SignalStrategy` (enter on BUY, exit on AVOID by default). More strategies, optimizer and registry are pending (see ROADMAP).
+
+## Viewing results (Phase 5)
+The Streamlit dashboard's **Backtests & score** page shows per-pair results with verdicts, equity/drawdown curves, a score explainer and score-vs-forward-return. See [../ui-dashboard.md](../ui-dashboard.md).
+
 ## Run it
 ```
 python scripts/db_migrate.py          # apply migration 007
