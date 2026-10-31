@@ -246,7 +246,27 @@ Implement key performance metrics:
 
 ---
 
-## Phase 5: AI Intelligence
+## Phase 5: UI Dashboard
+
+**Objective**: A mobile-friendly Streamlit dashboard to inspect data health, backtests and coins, and to trigger jobs.
+
+### Deliverables
+- Package `src/cryptoquantui/` (Streamlit + Plotly); run with `streamlit run src/cryptoquantui/app.py`
+- **Data quality**: freshness, completeness, gaps, integrity, analysis coverage, job history
+- **Backtests & score**: score explainer, per-pair results with verdicts, equity/drawdown, score-vs-forward-return
+- **Coins**: overview for all tracked coins (BTC default) with candlestick, EMA200, RSI, MACD and score charts
+- **Actions**: refresh, backfill, indicators, backtest, rescore via a `crypto.job_runs` queue and worker
+- `crypto.job_runs` run-log table (migration 008), also written by the scheduler jobs
+- Deployment: mini PC + Tailscale first; container-ready for Azure App Service (see `docs/ui-dashboard.md`)
+
+### Success Criteria
+- ✅ Data refresh health visible at a glance
+- ✅ Backtest results and score meaning explained
+- ✅ Usable on a phone
+
+---
+
+## Phase 5b: AI Intelligence (deferred)
 
 **Objective**: Integrate OpenAI for AI-powered market analysis and insights.
 
@@ -578,7 +598,8 @@ Implement key performance metrics:
 | 2 | Indicator Engine | 3-4 weeks | 6-8 weeks |
 | 3 | Backtesting Engine | 4-5 weeks | 10-13 weeks |
 | 4 | Strategy Engine | 4-5 weeks | 14-18 weeks |
-| 5 | AI Intelligence | 2-3 weeks | 16-21 weeks |
+| 5 | UI Dashboard | 1-2 weeks | 15-20 weeks |
+| 5b | AI Intelligence (deferred) | 2-3 weeks | 16-21 weeks |
 | 6 | Approval Workflow | 2-3 weeks | 18-24 weeks |
 | 7 | Trade Execution | 3-4 weeks | 21-28 weeks |
 | 8 | Portfolio Analytics | 3-4 weeks | 24-32 weeks |

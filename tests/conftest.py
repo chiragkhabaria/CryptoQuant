@@ -6,6 +6,12 @@ Shared test configuration and fixtures for the CryptoQuant test suite.
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _disable_job_log(monkeypatch):
+    """Keep scheduler job tests from writing to a real database."""
+    monkeypatch.setenv("JOB_LOG_ENABLED", "0")
+
+
 @pytest.fixture
 def sample_market_data():
     """Fixture providing sample market data for testing."""

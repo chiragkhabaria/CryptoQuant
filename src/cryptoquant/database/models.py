@@ -293,3 +293,22 @@ class BacktestEquity(Base):
         Index("ix_backtest_equity_run_time", "run_id", "timestamp"),
         {"schema": "crypto"},
     )
+
+
+class JobRun(Base):
+    """One execution of a background job (scheduled or triggered from the UI)."""
+
+    __tablename__ = "job_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_type = Column(String(30), nullable=False, index=True, comment="ingest, backfill, analytics, backtest, rescore")
+    status = Column(String(10), nullable=False, index=True, comment="queued, running, success, failed")
+    triggered_by = Column(String(20), nullable=False, default="scheduler", comment="scheduler or ui")
+    params = Column(Text, nullable=True, comment="JSON job parameters")
+    rows_written = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    __table_args__ = {"schema": "crypto"}
