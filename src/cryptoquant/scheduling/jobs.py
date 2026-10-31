@@ -16,12 +16,22 @@ from cryptoquant.analytics.analytics_pipeline import analyze_all_pairs
 from cryptoquant.backtesting.engine import BacktestConfig
 from cryptoquant.backtesting.runner import run_backtests
 from cryptoquant.config.settings import get_settings
+from cryptoquant.database.job_runs import (
+    JOB_ANALYTICS,
+    JOB_BACKFILL,
+    JOB_BACKTEST,
+    JOB_INGEST,
+    report_failure,
+    report_rows,
+    tracked_job,
+)
 from cryptoquant.ingestion.historic import run_ingestion
 from cryptoquant.strategies.signal_strategy import SignalStrategy
 
 logger = logging.getLogger(__name__)
 
 
+@tracked_job(JOB_INGEST)
 def incremental_ingestion_job() -> None:
     """
     Periodic job: fetch new OHLCV data from last watermark to now.
@@ -52,11 +62,13 @@ def incremental_ingestion_job() -> None:
                 stats["skipped"],
                 stats["errors"],
             )
+            report_rows(stats["inserted"] + stats.get("updated", 0))
             if stats["errors"] > 0:
                 logger.warning(
                     "incremental_ingestion_job: %d error(s) occurred during ingestion",
                     stats["errors"],
                 )
+                report_failure(f"{stats['errors']} error(s) during ingestion")
             # Success - exit retry loop
             return
 
@@ -75,8 +87,10 @@ def incremental_ingestion_job() -> None:
                     "incremental_ingestion_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+                report_failure(f"{type(exc).__name__}: {exc}")
 
 
+@tracked_job(JOB_INGEST)
 def historic_ingestion_job() -> None:
     """
     Periodic job: fetch and store recent OHLCV data for all tracked pairs.
@@ -109,11 +123,13 @@ def historic_ingestion_job() -> None:
                 stats["skipped"],
                 stats["errors"],
             )
+            report_rows(stats["inserted"] + stats.get("updated", 0))
             if stats["errors"] > 0:
                 logger.warning(
                     "historic_ingestion_job: %d error(s) occurred during ingestion",
                     stats["errors"],
                 )
+                report_failure(f"{stats['errors']} error(s) during ingestion")
             # Success - exit retry loop
             return
             
@@ -132,8 +148,10 @@ def historic_ingestion_job() -> None:
                     "historic_ingestion_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+                report_failure(f"{type(exc).__name__}: {exc}")
 
 
+@tracked_job(JOB_ANALYTICS)
 def incremental_technical_analysis_job() -> None:
     """
     Periodic job: calculate technical indicators for new candles.
@@ -166,11 +184,13 @@ def incremental_technical_analysis_job() -> None:
                 result['total_analyses_saved'],
                 result['failed_pairs'],
             )
+            report_rows(result['total_analyses_saved'])
             if result['failed_pairs'] > 0:
                 logger.warning(
                     "incremental_technical_analysis_job: %d pair(s) failed during analysis",
                     result['failed_pairs'],
                 )
+                report_failure(f"{result['failed_pairs']} pair(s) failed during analysis")
             # Success - exit retry loop
             return
 
@@ -189,8 +209,10 @@ def incremental_technical_analysis_job() -> None:
                     "incremental_technical_analysis_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+                report_failure(f"{type(exc).__name__}: {exc}")
 
 
+@tracked_job(JOB_BACKTEST)
 def daily_backtest_job() -> None:
     """
     Daily job: backtest all tracked pairs on the latest stored signals.
@@ -210,12 +232,17 @@ def daily_backtest_job() -> None:
             len(results) - len(failed),
             len(failed),
         )
+        report_rows(len(results) - len(failed))
         if failed:
             logger.warning("daily_backtest_job: failed/skipped pairs: %s", ", ".join(failed))
-    except Exception:
+            if len(failed) == len(results):
+                report_failure("all pairs failed/skipped: " + ", ".join(failed))
+    except Exception as exc:
         logger.exception("daily_backtest_job: failed — will retry at next scheduled run")
+        report_failure(f"{type(exc).__name__}: {exc}")
 
 
+@tracked_job(JOB_BACKFILL)
 def weekly_backfill_job() -> None:
     """
     Weekly job: detect and fill data gaps in market prices and technical analysis.
@@ -270,6 +297,7 @@ def weekly_backfill_job() -> None:
                     "weekly_backfill_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+                report_failure("timed out after 1 hour")
                 return
             time.sleep(retry_delay_seconds)
             
@@ -288,3 +316,4 @@ def weekly_backfill_job() -> None:
                     "weekly_backfill_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+                report_failure(f"{type(exc).__name__}: {exc}")

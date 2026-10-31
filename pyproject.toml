@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Institutional-grade quantitative research platform for cryptocurrency trading"
 authors = ["CryptoQuant Team"]
 readme = "README.md"
-packages = [{include = "cryptoquant", from = "src"}]
+packages = [
+    {include = "cryptoquant", from = "src"},
+    {include = "cryptoquantui", from = "src"},
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
@@ -31,7 +34,10 @@ tqdm = "^4.67.0"
 pyjwt = "^2.9.0"
 apscheduler = "^3.10"
 pyyaml = "^6.0"
+streamlit = {version = "^1.40", optional = true}
 
+[tool.poetry.extras]
+ui = ["streamlit"]
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 pytest-cov = "^6.0.0"
