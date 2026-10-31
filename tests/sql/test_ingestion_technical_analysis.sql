@@ -218,5 +218,39 @@ END;
 
 PRINT '';
 PRINT '============================================================';
+
+-- ============================================================
+-- 5. Phase 3 Placeholder Columns (Scoring & Signal)
+-- ============================================================
+-- ema_score, rsi_score, macd_score, atr_score, technical_score and signal
+-- are ALWAYS NULL today. This is expected, not a data quality bug:
+-- cryptoquant.analytics.scoring.calculate_scores()/calculate_signal() are
+-- Phase 3 placeholders that unconditionally return None (see
+-- src/cryptoquant/analytics/scoring.py and
+-- docs/functionality/FUNCTIONALITY.md, "Phase 3 - Signals & Intelligence").
+-- Purpose once implemented:
+--   ema_score        - price vs. EMA 200 trend score (bullish/bearish)
+--   rsi_score        - overbought/oversold score derived from rsi_14
+--   macd_score       - crossover/momentum score derived from macd_histogram
+--   atr_score        - volatility score derived from atr_14
+--   technical_score  - weighted aggregate of the four component scores
+--   signal           - BUY / HOLD / AVOID derived from technical_score
+PRINT '5) Phase 3 Placeholder Columns (expected to be NULL until scoring is implemented)';
+
+IF OBJECT_ID('crypto.technical_analysis', 'U') IS NOT NULL
+BEGIN
+    SELECT
+        COUNT(*) AS total_rows,
+        COUNT(ema_score) AS non_null_ema_score,
+        COUNT(rsi_score) AS non_null_rsi_score,
+        COUNT(macd_score) AS non_null_macd_score,
+        COUNT(atr_score) AS non_null_atr_score,
+        COUNT(technical_score) AS non_null_technical_score,
+        COUNT(signal) AS non_null_signal
+    FROM crypto.technical_analysis;
+END;
+
+PRINT '';
+PRINT '============================================================';
 PRINT 'Technical Analysis Validation Complete';
 PRINT '============================================================';

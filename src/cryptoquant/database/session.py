@@ -44,6 +44,7 @@ def get_engine(echo: bool = False) -> Engine:
         settings = get_settings()
 
         # Configure connection pooling for production use
+        extra = {"fast_executemany": True} if settings.database_url.startswith("mssql+pyodbc") else {}
         _engine = create_engine(
             settings.database_url,
             echo=echo,
@@ -52,6 +53,7 @@ def get_engine(echo: bool = False) -> Engine:
             max_overflow=20,
             pool_pre_ping=True,  # Verify connections before using
             pool_recycle=3600,  # Recycle connections after 1 hour
+            **extra,  # batch executemany: one round trip instead of one per row
         )
 
         logger.info(f"Database engine created: {_engine.url.database}")

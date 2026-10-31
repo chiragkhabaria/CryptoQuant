@@ -182,14 +182,19 @@ class TechnicalAnalysis(Base):
     macd_histogram = Column(Numeric(18, 8), nullable=True, comment="MACD histogram (MACD - signal)")
     atr_14 = Column(Numeric(18, 8), nullable=True, comment="Average True Range (14 periods)")
     
-    # Component Scores (placeholders for Phase 3)
-    ema_score = Column(Numeric(5, 2), nullable=True, comment="EMA component score")
-    rsi_score = Column(Numeric(5, 2), nullable=True, comment="RSI component score")
-    macd_score = Column(Numeric(5, 2), nullable=True, comment="MACD component score")
-    atr_score = Column(Numeric(5, 2), nullable=True, comment="ATR component score")
-    technical_score = Column(Numeric(5, 2), nullable=True, comment="Aggregate technical score")
+    # Component Scores - Phase 3 (not yet implemented).
+    # cryptoquant.analytics.scoring.calculate_scores() always returns None for
+    # every row today, so these columns are expected to be NULL for all data -
+    # this is not a data quality issue. See docs/functionality/FUNCTIONALITY.md
+    # ("Phase 3 - Signals & Intelligence") for the implementation plan.
+    ema_score = Column(Numeric(5, 2), nullable=True, comment="EMA component score (0-100)")
+    rsi_score = Column(Numeric(5, 2), nullable=True, comment="RSI component score (0-100)")
+    macd_score = Column(Numeric(5, 2), nullable=True, comment="MACD component score (0-100)")
+    atr_score = Column(Numeric(5, 2), nullable=True, comment="ATR component score (0-100)")
+    technical_score = Column(Numeric(5, 2), nullable=True, comment="Aggregate technical score, weighted average of component scores (0-100)")
     
-    # Signal
+    # Signal - Phase 3 (not yet implemented). calculate_signal() always returns
+    # None today, so this column is expected to be NULL for all data.
     signal = Column(String(10), nullable=True, comment="BUY, HOLD, or AVOID")
     
     # Metadata
@@ -211,3 +216,80 @@ class TechnicalAnalysis(Base):
 
     def __repr__(self) -> str:
         return f"<TechnicalAnalysis(id={self.id}, pair_id={self.trading_pair_id}, timestamp={self.timestamp}, signal={self.signal})>"
+
+
+class BacktestRun(Base):
+    """One backtest execution: configuration plus summary metrics."""
+
+    __tablename__ = "backtest_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trading_pair_id = Column(Integer, ForeignKey("crypto.trading_pairs.id"), nullable=False, index=True)
+    strategy_name = Column(String(50), nullable=False, index=True)
+    strategy_params = Column(Text, nullable=False, comment="JSON strategy parameters")
+    scoring_version = Column(String(10), nullable=False, default="v1")
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    initial_capital = Column(Numeric(18, 2), nullable=False)
+    fee_bps = Column(Numeric(8, 2), nullable=False)
+    slippage_bps = Column(Numeric(8, 2), nullable=False)
+    stop_atr_mult = Column(Numeric(6, 2), nullable=True)
+
+    total_return = Column(Numeric(12, 6), nullable=True)
+    benchmark_return = Column(Numeric(12, 6), nullable=True, comment="Buy & hold over the same bars")
+    excess_return = Column(Numeric(12, 6), nullable=True)
+    cagr = Column(Numeric(12, 6), nullable=True)
+    max_drawdown = Column(Numeric(12, 6), nullable=True)
+    sharpe = Column(Numeric(12, 6), nullable=True)
+    win_rate = Column(Numeric(12, 6), nullable=True)
+    profit_factor = Column(Numeric(12, 6), nullable=True)
+    avg_trade_return = Column(Numeric(12, 6), nullable=True)
+    exposure = Column(Numeric(12, 6), nullable=True)
+    num_trades = Column(Integer, nullable=False, default=0)
+    num_bars = Column(Integer, nullable=False, default=0)
+    total_fees = Column(Numeric(18, 2), nullable=True)
+    final_equity = Column(Numeric(18, 2), nullable=True)
+
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+
+    __table_args__ = {"schema": "crypto"}
+
+
+class BacktestTrade(Base):
+    """A completed round-trip trade within a backtest run."""
+
+    __tablename__ = "backtest_trades"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("crypto.backtest_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    entry_time = Column(DateTime, nullable=False)
+    exit_time = Column(DateTime, nullable=False)
+    entry_price = Column(Numeric(18, 8), nullable=False)
+    exit_price = Column(Numeric(18, 8), nullable=False)
+    quantity = Column(Numeric(28, 12), nullable=False)
+    fees = Column(Numeric(18, 4), nullable=False)
+    pnl = Column(Numeric(18, 4), nullable=False)
+    return_pct = Column(Numeric(12, 6), nullable=False)
+    bars_held = Column(Integer, nullable=False)
+    exit_reason = Column(String(20), nullable=False)
+
+    __table_args__ = {"schema": "crypto"}
+
+
+class BacktestEquity(Base):
+    """Per-bar equity curve of a backtest run."""
+
+    __tablename__ = "backtest_equity"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("crypto.backtest_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False)
+    equity = Column(Numeric(18, 4), nullable=False)
+    drawdown = Column(Numeric(12, 6), nullable=False)
+    benchmark_equity = Column(Numeric(18, 4), nullable=False)
+    in_position = Column(Boolean, nullable=False)
+
+    __table_args__ = (
+        Index("ix_backtest_equity_run_time", "run_id", "timestamp"),
+        {"schema": "crypto"},
+    )

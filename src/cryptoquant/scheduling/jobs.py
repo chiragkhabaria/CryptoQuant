@@ -13,8 +13,11 @@ import time
 from pathlib import Path
 
 from cryptoquant.analytics.analytics_pipeline import analyze_all_pairs
+from cryptoquant.backtesting.engine import BacktestConfig
+from cryptoquant.backtesting.runner import run_backtests
 from cryptoquant.config.settings import get_settings
 from cryptoquant.ingestion.historic import run_ingestion
+from cryptoquant.strategies.signal_strategy import SignalStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +189,31 @@ def incremental_technical_analysis_job() -> None:
                     "incremental_technical_analysis_job: all %d attempts failed — giving up until next scheduled run",
                     max_retries,
                 )
+
+
+def daily_backtest_job() -> None:
+    """
+    Daily job: backtest all tracked pairs on the latest stored signals.
+
+    Runs after incremental_technical_analysis_job so the live pipeline's
+    newest scores are included. Each run is persisted to crypto.backtest_runs
+    so strategy performance can be tracked over time.
+
+    Exceptions are caught and logged; the scheduler process keeps running.
+    """
+    logger.info("daily_backtest_job: started")
+    try:
+        results = run_backtests(SignalStrategy(), BacktestConfig())
+        failed = [r["symbol"] for r in results if "error" in r]
+        logger.info(
+            "daily_backtest_job: completed — %d pairs backtested, %d failed/skipped",
+            len(results) - len(failed),
+            len(failed),
+        )
+        if failed:
+            logger.warning("daily_backtest_job: failed/skipped pairs: %s", ", ".join(failed))
+    except Exception:
+        logger.exception("daily_backtest_job: failed — will retry at next scheduled run")
 
 
 def weekly_backfill_job() -> None:
